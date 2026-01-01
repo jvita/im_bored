@@ -2,7 +2,7 @@
     {
         "type": "dnd",
         "description": "Add more treasure to Jarlmoot",
-        "completed": true
+        "completed": false
     },
     {
         "type": "im_bored_app",

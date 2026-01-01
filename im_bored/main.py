@@ -53,6 +53,13 @@ def main():
         "index", type=int, help="The index of the activity to complete"
     )
 
+    incomplete_parser = subparser.add_parser(
+        "incomplete", help="Mark an activity as incomplete"
+    )
+    incomplete_parser.add_argument(
+        "index", type=int, help="The index of the activity to mark as incomplete"
+    )
+
     remove_parser = subparser.add_parser("remove", help="Remove an activity")
     remove_parser.add_argument(
         "index", type=int, help="The index of the activity to remove"
@@ -134,6 +141,12 @@ def main():
             return
         data[args.index]["completed"] = True
         console.print(f"Marked activity {args.index} as complete.")
+    elif args.command == "incomplete":
+        if args.index < 0 or args.index >= len(data):
+            console.print("Invalid index.")
+            return
+        data[args.index]["completed"] = False
+        console.print(f"Marked activity {args.index} as incomplete.")
     else:
         # Default imbored command - pick a random activity
         filter_type = args.type
