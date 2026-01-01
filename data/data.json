@@ -1,17 +1,11 @@
 {
-    "todo": [
-        "Pay rent"
-    ],
-    "general": [
-        "Tell Caro you love her"
-    ],
     "dnd": [
         "Think of more treasure to add to Jarlmoot"
     ],
-    "im_bored": [
+    "im_bored_app": [
         "Add ability to classify activity automatically with LLM"
     ],
-    "coding": [
-        "Make repo with .vimrc/.bashrc/.sshconfig/etc."
+    "general": [
+        "Tell Caro you love her"
     ]
 }
