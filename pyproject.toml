@@ -1,0 +1,35 @@
+[project]
+name = "im-bored"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "rich>=14.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+    "ruff>=0.1.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[project.scripts]
+imbored = "im_bored.main:main"
+
+[tool.setuptools]
+packages = ["im_bored"]
