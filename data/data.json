@@ -1,11 +1,17 @@
-{
-    "dnd": [
-        "Think of more treasure to add to Jarlmoot"
-    ],
-    "im_bored_app": [
-        "Add ability to classify activity automatically with LLM"
-    ],
-    "general": [
-        "Tell Caro you love her"
-    ]
-}
+[
+    {
+        "type": "dnd",
+        "description": "Add more treasure to Jarlmoot",
+        "completed": true
+    },
+    {
+        "type": "im_bored_app",
+        "description": "Add ability to classify activity with LLM",
+        "completed": false
+    },
+    {
+        "type": "general",
+        "description": "Tell Caro you love her",
+        "completed": false
+    }
+]

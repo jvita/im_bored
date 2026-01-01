@@ -27,7 +27,11 @@ def parse_activity(activity: str) -> dict:
         activity_type = "general"
         activity_description = activity.strip()
 
-    return {"type": activity_type, "description": activity_description}
+    return {
+        "type": activity_type,
+        "description": activity_description,
+        "completed": False,
+    }
 
 
 def main():
@@ -41,6 +45,13 @@ def main():
 
     add_parser = subparser.add_parser("add", help="Add a new activity")
     add_parser.add_argument("activity", type=str, help="The activity to add")
+
+    complete_parser = subparser.add_parser(
+        "complete", help="Mark an activity as complete"
+    )
+    complete_parser.add_argument(
+        "index", type=int, help="The index of the activity to complete"
+    )
 
     remove_parser = subparser.add_parser("remove", help="Remove an activity")
     remove_parser.add_argument(
@@ -57,11 +68,7 @@ def main():
         with open(JSON_PATH) as f:
             data = json.load(f)
     else:
-        data = {"general": []}
-
-    # Migrate old data structure if needed
-    if "activities" in data:
-        data["general"] = data.pop("activities")
+        data = []
 
     # Execute command
     command = args.command
@@ -71,56 +78,77 @@ def main():
         activity_type = parsed["type"]
         description = parsed["description"]
 
-        if activity_type not in data:
-            data[activity_type] = []
-        data[activity_type].append(description)
-        console.print(f"Added activity to '{activity_type}': {description}")
+        data.append(parsed)
+        console.print(f"Added activity: \\[{activity_type}] {description}")
 
     elif command == "remove":
-        # Flatten all activities with their types for indexing
-        all_activities = []
-        for act_type in data.keys():
-            for activity in data[act_type]:
-                all_activities.append((act_type, activity))
-
-        if 0 <= args.index < len(all_activities):
-            act_type, activity = all_activities[args.index]
-            data[act_type].remove(activity)
-            console.print(f"Removed: [{act_type}] {activity}")
-
-            if len(data[act_type]) == 0:
-                del data[act_type]
-        else:
-            console.print(f"Error: Index {args.index} out of range")
-
+        if args.index < 0 or args.index >= len(data):
+            console.print("Invalid index.")
+            return
+        del data[args.index]
     elif command == "list":
-        filter_type = args.type
         console.print("")
-        index = 0
 
-        for act_type in data.keys():
-            table = Table(title=act_type, title_justify="left")
-            table.add_column("Index", justify="right")
+        grouped_data = {}
+        for ei, entry in enumerate(data):
+            if entry["type"] not in grouped_data:
+                grouped_data[entry["type"]] = []
+            grouped_data[entry["type"]].append((ei, entry))
+
+        if args.type is not None:
+            table = Table(title=args.type, title_justify="left")
+            table.add_column("ID", justify="right")
+            table.add_column("Done", justify="center")
             table.add_column("Activity", justify="left")
 
-            if data[act_type]:
-                for activity in data[act_type]:
-                    table.add_row(str(index), activity)
-                    index += 1
+            for ei, activity in grouped_data[args.type]:
+                table.add_row(
+                    str(ei),
+                    "✔" if activity["completed"] else "",
+                    activity["description"],
+                )
 
             console.print(table)
             console.print()
 
+        else:
+            for act_type in grouped_data.keys():
+                table = Table(title=act_type, title_justify="left")
+                table.add_column("ID", justify="right")
+                table.add_column("Done", justify="center")
+                table.add_column("Activity", justify="left")
+
+                if grouped_data[act_type]:
+                    for ei, activity in grouped_data[act_type]:
+                        table.add_row(
+                            str(ei),
+                            "✔" if activity["completed"] else "",
+                            activity["description"],
+                        )
+
+                console.print(table)
+                console.print()
+    elif args.command == "complete":
+        if args.index < 0 or args.index >= len(data):
+            console.print("Invalid index.")
+            return
+        data[args.index]["completed"] = True
+        console.print(f"Marked activity {args.index} as complete.")
     else:
         # Default imbored command - pick a random activity
         filter_type = args.type
-        all_activities = []
+        if args.type:
+            filtered_data = [entry for entry in data if entry["type"] == args.type]
+        else:
+            filtered_data = data
 
-        for act_type in data.keys():
-            all_activities.extend(data[act_type])
+        if data:
+            choice = random.choice(filtered_data)
+            act_type = choice["type"]
 
-        if all_activities:
-            console.print(f"[{act_type}]", random.choice(all_activities))
+            console.print()
+            console.print(f"\\[{act_type}]", choice["description"])
+            console.print()
         else:
             filter_msg = f" of type '{filter_type}'" if filter_type else ""
             console.print(
