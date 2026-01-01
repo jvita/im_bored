@@ -34,6 +34,22 @@ def parse_activity(activity: str) -> dict:
     }
 
 
+def print_table(data, title):
+    table = Table(title=title, title_justify="left")
+    table.add_column("ID", justify="right")
+    table.add_column("Done", justify="center")
+    table.add_column("Activity", justify="left")
+
+    for ei, entry in data:
+        table.add_row(
+            str(ei),
+            "✔" if entry["completed"] else "",
+            f"[{entry['type']}] {entry['description']}",
+        )
+
+    console.print(table)
+
+
 def main():
     # Load arguments
     parser = argparse.ArgumentParser(description="im-bored CLI")
@@ -44,7 +60,9 @@ def main():
     subparser = parser.add_subparsers(dest="command")
 
     add_parser = subparser.add_parser("add", help="Add a new activity")
-    add_parser.add_argument("activity", type=str, help="The activity to add")
+    add_parser.add_argument(
+        "activity", type=str, help="The activity to add", nargs=argparse.REMAINDER
+    )
 
     complete_parser = subparser.add_parser(
         "complete", help="Mark an activity as complete"
@@ -81,7 +99,7 @@ def main():
     command = args.command
 
     if command == "add":
-        parsed = parse_activity(args.activity)
+        parsed = parse_activity(" ".join(args.activity))
         activity_type = parsed["type"]
         description = parsed["description"]
 
@@ -103,38 +121,19 @@ def main():
             grouped_data[entry["type"]].append((ei, entry))
 
         if args.type is not None:
-            table = Table(title=args.type, title_justify="left")
-            table.add_column("ID", justify="right")
-            table.add_column("Done", justify="center")
-            table.add_column("Activity", justify="left")
-
-            for ei, activity in grouped_data[args.type]:
-                table.add_row(
-                    str(ei),
-                    "✔" if activity["completed"] else "",
-                    activity["description"],
-                )
-
-            console.print(table)
+            print_table(grouped_data[args.type], args.type)
             console.print()
 
         else:
+            print_table(grouped_data["general"], "general")
+            console.print()
+
             for act_type in grouped_data.keys():
-                table = Table(title=act_type, title_justify="left")
-                table.add_column("ID", justify="right")
-                table.add_column("Done", justify="center")
-                table.add_column("Activity", justify="left")
-
-                if grouped_data[act_type]:
-                    for ei, activity in grouped_data[act_type]:
-                        table.add_row(
-                            str(ei),
-                            "✔" if activity["completed"] else "",
-                            activity["description"],
-                        )
-
-                console.print(table)
+                if act_type == "general":
+                    continue
+                print_table(grouped_data[act_type], act_type)
                 console.print()
+
     elif args.command == "complete":
         if args.index < 0 or args.index >= len(data):
             console.print("Invalid index.")

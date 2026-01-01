@@ -13,5 +13,25 @@
         "type": "general",
         "description": "Tell Caro you love her",
         "completed": false
+    },
+    {
+        "type": "dnd",
+        "description": "Sketch out session after Jarlmoot",
+        "completed": false
+    },
+    {
+        "type": "general",
+        "description": "Sign up for Spanish classes",
+        "completed": false
+    },
+    {
+        "type": "puzzles",
+        "description": "Wooden box puzzle from Nathan/Carly",
+        "completed": false
+    },
+    {
+        "type": "puzzles",
+        "description": "Try to CAD model one of the Hanayama puzzles",
+        "completed": false
     }
 ]
