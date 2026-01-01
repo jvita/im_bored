@@ -5,7 +5,7 @@
         "completed": false
     },
     {
-        "type": "im_bored_app",
+        "type": "im-bored",
         "description": "Add ability to classify activity with LLM",
         "completed": false
     },
@@ -32,6 +32,71 @@
     {
         "type": "puzzles",
         "description": "Try to CAD model one of the Hanayama puzzles",
+        "completed": false
+    },
+    {
+        "type": "puzzles",
+        "description": "Square metal puzzle from Caro",
+        "completed": false
+    },
+    {
+        "type": "freediving",
+        "description": "CO2 table",
+        "completed": false
+    },
+    {
+        "type": "freediving",
+        "description": "Max hold attempt",
+        "completed": false
+    },
+    {
+        "type": "exercise",
+        "description": "Go for a run",
+        "completed": false
+    },
+    {
+        "type": "exercise",
+        "description": "Do a yoga session",
+        "completed": false
+    },
+    {
+        "type": "read",
+        "description": "Dungeon Crawler Carl",
+        "completed": false
+    },
+    {
+        "type": "todo",
+        "description": "Sign up for CSA (community agriculture thing)",
+        "completed": false
+    },
+    {
+        "type": "todo",
+        "description": "Clean the backyard",
+        "completed": false
+    },
+    {
+        "type": "metalworking",
+        "description": "Look into metalworking classes",
+        "completed": false
+    },
+    {
+        "type": "reasonable-requests",
+        "description": "Send update to Ben",
+        "completed": false
+    },
+    {
+        "type": "todo",
+        "description": "Prep for Elemynt interview",
+        "completed": false
+    },
+    {
+        "type": "orthic",
+        "description": "Transcribe a page of The Hobbit into Orthic",
+        "completed": false
+    },
+    {
+        "type": "guitar",
+        "description": "Play guitar for 30 minutes",
         "completed": false
     }
 ]
