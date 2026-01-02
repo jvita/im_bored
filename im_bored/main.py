@@ -1,16 +1,32 @@
 import argparse
-import json
 import os
 import random
 import re
+import sqlite3
+from contextlib import contextmanager
 
 from rich.columns import Columns
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-JSON_PATH = "data/data.json"
+DB_PATH = "data/activities.db"
 console = Console()
+
+
+@contextmanager
+def get_db_connection():
+    """Context manager for database connections"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def parse_activity(activity: str) -> dict:
@@ -32,7 +48,7 @@ def parse_activity(activity: str) -> dict:
     return {
         "type": activity_type,
         "description": activity_description,
-        "completed": False,
+        "completed": 0,
     }
 
 
@@ -108,12 +124,11 @@ def main():
 
     args = parser.parse_args()
 
-    # Load data
-    if os.path.exists(JSON_PATH):
-        with open(JSON_PATH) as f:
-            data = json.load(f)
-    else:
-        data = []
+    # Check database exists
+    if not os.path.exists(DB_PATH):
+        console.print("✗ Database not found. Please run the migration script first:")
+        console.print("  python migrate_to_sqlite.py")
+        return
 
     # Execute command
     command = args.command
@@ -123,22 +138,39 @@ def main():
         activity_type = parsed["type"]
         description = parsed["description"]
 
-        data.append(parsed)
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO activities (type, description, completed) VALUES (?, ?, ?)",
+                (parsed["type"], parsed["description"], 0)
+            )
         console.print(f"Added activity: \\[{activity_type}] {description}")
 
     elif command == "remove":
-        if args.index < 0 or args.index >= len(data):
-            console.print("Invalid index.")
-            return
-        del data[args.index]
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM activities ORDER BY id")
+            activities = cursor.fetchall()
+
+            if args.index < 0 or args.index >= len(activities):
+                console.print("Invalid index.")
+                return
+
+            activity_id = activities[args.index]['id']
+            cursor.execute("DELETE FROM activities WHERE id = ?", (activity_id,))
     elif command == "activities":
         console.print("")
 
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM activities ORDER BY id")
+            activities = [dict(row) for row in cursor.fetchall()]
+
         grouped_data = {}
-        for ei, entry in enumerate(data):
-            if entry["type"] not in grouped_data:
-                grouped_data[entry["type"]] = []
-            grouped_data[entry["type"]].append((ei, entry))
+        for ei, activity in enumerate(activities):
+            if activity["type"] not in grouped_data:
+                grouped_data[activity["type"]] = []
+            grouped_data[activity["type"]].append((ei, activity))
 
         panels = []
 
@@ -163,11 +195,16 @@ def main():
     elif command == "todo":
         console.print("")
 
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM activities ORDER BY id")
+            activities = [dict(row) for row in cursor.fetchall()]
+
         grouped_data = {}
-        for ei, entry in enumerate(data):
-            if entry["type"] not in grouped_data:
-                grouped_data[entry["type"]] = []
-            grouped_data[entry["type"]].append((ei, entry))
+        for ei, activity in enumerate(activities):
+            if activity["type"] not in grouped_data:
+                grouped_data[activity["type"]] = []
+            grouped_data[activity["type"]].append((ei, activity))
 
         if "todo" in grouped_data:
             panel = create_panel(grouped_data["todo"], "todo")
@@ -177,29 +214,55 @@ def main():
         console.print()
 
     elif args.command == "complete":
-        if args.index < 0 or args.index >= len(data):
-            console.print("Invalid index.")
-            return
-        data[args.index]["completed"] = True
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM activities ORDER BY id")
+            activities = cursor.fetchall()
+
+            if args.index < 0 or args.index >= len(activities):
+                console.print("Invalid index.")
+                return
+
+            activity_id = activities[args.index]['id']
+            cursor.execute(
+                "UPDATE activities SET completed = ? WHERE id = ?",
+                (1, activity_id)
+            )
         console.print(f"Marked activity {args.index} as complete.")
     elif args.command == "incomplete":
-        if args.index < 0 or args.index >= len(data):
-            console.print("Invalid index.")
-            return
-        data[args.index]["completed"] = False
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM activities ORDER BY id")
+            activities = cursor.fetchall()
+
+            if args.index < 0 or args.index >= len(activities):
+                console.print("Invalid index.")
+                return
+
+            activity_id = activities[args.index]['id']
+            cursor.execute(
+                "UPDATE activities SET completed = ? WHERE id = ?",
+                (0, activity_id)
+            )
         console.print(f"Marked activity {args.index} as incomplete.")
     else:
         # Default imbored command - pick a random activity
         filter_type = args.type
-        if args.type:
-            filtered_data = [entry for entry in data if entry["type"] == args.type]
-        else:
-            filtered_data = data
 
-        if data:
-            choice = random.choice(filtered_data)
-            act_type = choice["type"]
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            if args.type:
+                cursor.execute(
+                    "SELECT * FROM activities WHERE type = ? ORDER BY RANDOM() LIMIT 1",
+                    (args.type,)
+                )
+            else:
+                cursor.execute("SELECT * FROM activities ORDER BY RANDOM() LIMIT 1")
 
+            choice = cursor.fetchone()
+
+        if choice:
+            choice = dict(choice)
             panel = Panel(
                 f"\n[cyan]({choice['type']})[/cyan]\n\n[bold]{choice['description']}[/bold]",
                 title="How about you...",
@@ -217,8 +280,3 @@ def main():
             console.print(
                 f"No activities found{filter_msg}. Add some with 'imbored add \"[type] activity\"'"
             )
-
-    # Save data
-    os.makedirs(os.path.dirname(JSON_PATH), exist_ok=True)
-    with open(JSON_PATH, "w") as f:
-        json.dump(data, f, indent=4)
