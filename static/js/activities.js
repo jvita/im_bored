@@ -173,7 +173,7 @@ function renderActivities() {
 function renderActivityItem(activity) {
     const isTodo = activity.type === 'todo';
 
-    // Render checkbox for todo items (now on the right side)
+    // Render checkbox for todo items, spacer for non-todo items when viewing All
     const checkboxHtml = isTodo ? `
         <div class="checkbox-wrapper">
             <input
@@ -183,16 +183,15 @@ function renderActivityItem(activity) {
             >
             <div class="checkbox-custom"></div>
         </div>
-    ` : '';
+    ` : (currentType === null ? '<div class="checkbox-spacer"></div>' : '');
 
     // Show type label only when viewing all activities
-    const typeLabel = currentType === null ? `<span class="activity-type">[${activity.type}]</span>` : '';
+    const typeLabel = currentType === null ? `<span class="activity-type">${activity.type}</span>` : '';
 
     return `
         <li class="activity-item ${activity.completed ? 'completed' : ''}">
             <span class="activity-description">${escapeHtml(activity.description)}</span>
             ${typeLabel}
-            ${checkboxHtml}
             <button class="delete-btn" data-id="${activity.id}" onclick="handleDelete(event, ${activity.id})">delete</button>
         </li>
     `;
@@ -227,7 +226,7 @@ async function getRandomActivity() {
 
         if (data.success) {
             resultDiv.innerHTML = `
-                <span class="activity-type">[${escapeHtml(data.activity.type)}]</span>
+                <span class="activity-type">${escapeHtml(data.activity.type)}</span>
                 <span>${escapeHtml(data.activity.description)}</span>
             `;
         } else {
