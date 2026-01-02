@@ -176,16 +176,14 @@ body {
     gap: 0.75rem;
 }
 
-.activity-type-badge {
-    padding: 0.25rem 0.75rem;
-    background: var(--bg-primary);
+.activity-result .activity-type {
+    margin-left: 0;
+    text-align: left;
     color: var(--yellow-dim);
-    border: 1px solid var(--border-color);
-    border-radius: 3px;
     font-size: 0.875rem;
 }
 
-.activity-description {
+.activity-result span {
     font-size: 1rem;
     color: var(--text-emphasis);
     line-height: 1.6;
@@ -208,7 +206,7 @@ body {
     border-bottom: none;
 }
 
-.activity-item.completed .activity-text {
+.activity-item.completed .activity-description {
     color: var(--text-secondary);
     text-decoration: line-through;
 }
@@ -216,6 +214,12 @@ body {
 /* Checkbox */
 .checkbox-wrapper {
     position: relative;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.checkbox-spacer {
     width: 20px;
     height: 20px;
     flex-shrink: 0;
@@ -257,8 +261,16 @@ body {
     font-size: 0.875rem;
 }
 
-.activity-text {
+.activity-description {
     flex: 1;
+}
+
+.activity-type {
+    color: var(--yellow-dim);
+    font-size: 0.875rem;
+    margin-left: 1rem;
+    flex-shrink: 0;
+    text-align: right;
 }
 
 .delete-btn {
