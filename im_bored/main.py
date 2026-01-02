@@ -201,7 +201,7 @@ def main():
             act_type = choice["type"]
 
             panel = Panel(
-                f"\n({choice['type']})\n\n[bold]{choice['description']}[/bold]",
+                f"\n[cyan]({choice['type']})[/cyan]\n\n[bold]{choice['description']}[/bold]",
                 title="How about you...",
                 border_style="green",
                 subtitle="?",

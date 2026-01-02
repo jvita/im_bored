@@ -103,5 +103,20 @@
         "type": "random",
         "description": "Design custom chess pieces",
         "completed": false
+    },
+    {
+        "type": "chess",
+        "description": "Play a 3|2 game",
+        "completed": false
+    },
+    {
+        "type": "chess",
+        "description": "Do puzzles until you get 5 in a row",
+        "completed": false
+    },
+    {
+        "type": "todo",
+        "description": "Buy doggy-door insert",
+        "completed": false
     }
 ]
