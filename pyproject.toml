@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "black>=25.12.0",
+    "flask>=3.0.0",
     "isort>=7.0.0",
     "mypy>=1.19.1",
     "rich>=14.2.0",
@@ -33,6 +34,7 @@ line_length = 88
 
 [project.scripts]
 imbored = "im_bored.main:main"
+imbored-web = "im_bored.web:run"
 
 [tool.setuptools]
 packages = ["im_bored"]

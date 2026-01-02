@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}I'm Bored{% endblock %}
+
+{% block content %}
+<div class="app-container">
+    <!-- Left Sidebar Navigation -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-title">Activity Types</div>
+        </div>
+        <div id="sidebarNav">
+            <!-- Navigation items will be dynamically loaded -->
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <!-- I'm Bored Section -->
+        <div class="panel bored-section">
+            <div class="panel-header">Random Activity</div>
+            <div class="panel-content">
+                <button class="bored-button" onclick="getRandomActivity()">I'm Bored</button>
+                <div class="activity-result" id="activityResult">
+                    <!-- Random activity will appear here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Browse Activities Section -->
+        <div class="panel">
+            <div class="panel-header" id="activitiesHeader">All Activities</div>
+            <div class="panel-content">
+                <!-- Add Activity Form -->
+                <form class="add-form" id="addActivityForm">
+                    <input type="text" id="activityDescription" placeholder="Add new activity..." required>
+                    <button type="submit">Add</button>
+                </form>
+
+                <!-- Activities List -->
+                <div id="activitiesList">
+                    <!-- Activities will be dynamically loaded -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,32 +1,15 @@
 import argparse
 import os
-import random
 import re
-import sqlite3
-from contextlib import contextmanager
 
 from rich.columns import Columns
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-DB_PATH = "data/activities.db"
+from im_bored.db import DB_PATH, get_db_connection
+
 console = Console()
-
-
-@contextmanager
-def get_db_connection():
-    """Context manager for database connections"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
 def parse_activity(activity: str) -> dict:
