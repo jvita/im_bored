@@ -4,7 +4,9 @@ import os
 import random
 import re
 
+from rich.columns import Columns
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 JSON_PATH = "data/data.json"
@@ -34,20 +36,37 @@ def parse_activity(activity: str) -> dict:
     }
 
 
-def print_table(data, title):
-    table = Table(title=title, title_justify="left")
-    table.add_column("ID", justify="right")
-    table.add_column("Done", justify="center")
-    table.add_column("Activity", justify="left")
+def create_panel(data, title, width=None):
+    table = Table(
+        show_header=True,
+        show_edge=False,
+        pad_edge=False,
+        box=None,
+        header_style="magenta",
+        row_styles=["", "yellow"],
+    )
+    table.add_column("ID", justify="right", width=3)
+
+    # Only show "Done" column for "todo" activity type
+    show_done = title == "todo"
+    if show_done:
+        table.add_column("Done", justify="center", width=4)
+
+    table.add_column("Description")
 
     for ei, entry in data:
-        table.add_row(
-            str(ei),
-            "✔" if entry["completed"] else "",
-            f"[{entry['type']}] {entry['description']}",
-        )
+        if show_done:
+            done_mark = "✔" if entry["completed"] else " "
+            table.add_row(str(ei), done_mark, entry["description"])
+        else:
+            table.add_row(str(ei), entry["description"])
 
-    console.print(table)
+    return Panel(
+        table,
+        title=title,
+        border_style="cyan",
+        width=width,
+    )
 
 
 def main():
@@ -83,8 +102,9 @@ def main():
         "index", type=int, help="The index of the activity to remove"
     )
 
-    list_parser = subparser.add_parser("list", help="List all activities")
-    list_parser.add_argument("--type", type=str, help="Filter activities by type")
+    subparser.add_parser("activities", help="List all activities (excluding to-do)")
+
+    subparser.add_parser("todo", help="Show the to-do list")
 
     args = parser.parse_args()
 
@@ -111,7 +131,7 @@ def main():
             console.print("Invalid index.")
             return
         del data[args.index]
-    elif command == "list":
+    elif command == "activities":
         console.print("")
 
         grouped_data = {}
@@ -120,19 +140,41 @@ def main():
                 grouped_data[entry["type"]] = []
             grouped_data[entry["type"]].append((ei, entry))
 
-        if args.type is not None:
-            print_table(grouped_data[args.type], args.type)
-            console.print()
+        panels = []
 
+        # Add general first if it exists
+        if "general" in grouped_data:
+            panels.append(create_panel(grouped_data["general"], "general", width=40))
+
+        # Add all other types except 'to-do'
+        for act_type in sorted(grouped_data.keys()):
+            if act_type in ("general", "todo"):
+                continue
+            panels.append(create_panel(grouped_data[act_type], act_type, width=40))
+
+        if panels:
+            console.print(
+                Columns(panels, equal=True, expand=True, column_first=True, padding=1)
+            )
         else:
-            print_table(grouped_data["general"], "general")
-            console.print()
+            console.print("No activities found.")
+        console.print()
 
-            for act_type in grouped_data.keys():
-                if act_type == "general":
-                    continue
-                print_table(grouped_data[act_type], act_type)
-                console.print()
+    elif command == "todo":
+        console.print("")
+
+        grouped_data = {}
+        for ei, entry in enumerate(data):
+            if entry["type"] not in grouped_data:
+                grouped_data[entry["type"]] = []
+            grouped_data[entry["type"]].append((ei, entry))
+
+        if "todo" in grouped_data:
+            panel = create_panel(grouped_data["todo"], "todo")
+            console.print(panel)
+        else:
+            console.print("No todo items found.")
+        console.print()
 
     elif args.command == "complete":
         if args.index < 0 or args.index >= len(data):
@@ -158,8 +200,17 @@ def main():
             choice = random.choice(filtered_data)
             act_type = choice["type"]
 
+            panel = Panel(
+                f"\n({choice['type']})\n\n[bold]{choice['description']}[/bold]",
+                title="How about you...",
+                border_style="green",
+                subtitle="?",
+                subtitle_align="right",
+                expand=False,
+            )
+
             console.print()
-            console.print(f"\\[{act_type}]", choice["description"])
+            console.print(panel)
             console.print()
         else:
             filter_msg = f" of type '{filter_type}'" if filter_type else ""

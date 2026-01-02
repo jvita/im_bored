@@ -98,5 +98,10 @@
         "type": "guitar",
         "description": "Play guitar for 30 minutes",
         "completed": false
+    },
+    {
+        "type": "random",
+        "description": "Design custom chess pieces",
+        "completed": false
     }
 ]
