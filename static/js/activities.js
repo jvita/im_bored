@@ -25,6 +25,7 @@ async function loadActivities() {
         if (data.success) {
             allActivities = data.activities;
             renderSidebar();
+            renderBottomNav();
             renderActivities();
         }
     } catch (error) {
@@ -94,11 +95,90 @@ function renderSidebar() {
 
         nav.appendChild(item);
     });
+
+    // Add "+ New" button
+    const newCategoryBtn = document.createElement('div');
+    newCategoryBtn.className = 'nav-item new-category-btn';
+    newCategoryBtn.textContent = '+ New Category';
+    newCategoryBtn.onclick = createNewCategory;
+    nav.appendChild(newCategoryBtn);
+}
+
+function renderBottomNav() {
+    const bottomNav = document.getElementById('bottomNav');
+    if (!bottomNav) return;
+
+    const scrollContainer = bottomNav.querySelector('.bottom-nav-scroll');
+    if (!scrollContainer) return;
+
+    scrollContainer.innerHTML = '';
+
+    // Add "All" item
+    const totalCount = Object.values(allActivities).reduce((sum, activities) => sum + activities.length, 0);
+    const allItem = createBottomNavItem('All', null, totalCount);
+    scrollContainer.appendChild(allItem);
+
+    // Add 'todo' first if it exists
+    if (allActivities['todo']) {
+        const todoItem = createBottomNavItem('To-Do', 'todo', allActivities['todo'].length);
+        scrollContainer.appendChild(todoItem);
+    }
+
+    // Add other types (sorted, excluding 'todo')
+    const types = Object.keys(allActivities)
+        .filter(t => t !== 'todo')
+        .sort((a, b) => {
+            if (a === 'general') return -1;
+            if (b === 'general') return 1;
+            return a.localeCompare(b);
+        });
+
+    types.forEach(type => {
+        const count = allActivities[type].length;
+        const item = createBottomNavItem(capitalize(type), type, count);
+        scrollContainer.appendChild(item);
+    });
+
+    // Add "+ New" button
+    const newCategoryBtn = document.createElement('div');
+    newCategoryBtn.className = 'bottom-nav-item new-category-btn';
+    newCategoryBtn.onclick = createNewCategory;
+    newCategoryBtn.setAttribute('role', 'button');
+    newCategoryBtn.setAttribute('aria-label', 'Create new category');
+    newCategoryBtn.textContent = '+ New';
+    scrollContainer.appendChild(newCategoryBtn);
+}
+
+function createBottomNavItem(label, type, count) {
+    const item = document.createElement('div');
+    item.className = 'bottom-nav-item' + (currentType === type ? ' active' : '');
+    item.onclick = () => selectType(type);
+    item.setAttribute('role', 'tab');
+    item.setAttribute('aria-selected', currentType === type);
+    item.setAttribute('aria-label', `${label}, ${count} items`);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'bottom-nav-label';
+    labelSpan.textContent = label + ' ';
+
+    const countSpan = document.createElement('span');
+    countSpan.className = 'bottom-nav-count';
+    countSpan.textContent = `(${count})`;
+
+    item.appendChild(labelSpan);
+    item.appendChild(countSpan);
+
+    return item;
+}
+
+function capitalize(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 function selectType(type) {
     currentType = type;
     renderSidebar();
+    renderBottomNav();
     renderActivities();
 }
 
@@ -245,6 +325,54 @@ async function getRandomActivity() {
 }
 
 // ===== CRUD OPERATIONS =====
+
+async function createNewCategory() {
+    const categoryName = prompt('Enter new category name:');
+
+    if (!categoryName) {
+        return; // User cancelled
+    }
+
+    const trimmedName = categoryName.trim().toLowerCase();
+
+    if (!trimmedName) {
+        showNotification('Category name cannot be empty', 'error');
+        return;
+    }
+
+    // Check if category already exists
+    if (allActivities[trimmedName]) {
+        showNotification('Category already exists', 'error');
+        return;
+    }
+
+    try {
+        // Create a placeholder activity to establish the category
+        const response = await fetch('/api/activities', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: trimmedName,
+                description: '(placeholder - feel free to delete or edit)'
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            await loadActivities();
+            selectType(trimmedName);
+            showNotification('Category created', 'success');
+        } else {
+            showNotification(data.message, 'error');
+        }
+    } catch (error) {
+        console.error('Error creating category:', error);
+        showNotification('Error creating category', 'error');
+    }
+}
 
 async function toggleCompletion(activityId, completed) {
     try {

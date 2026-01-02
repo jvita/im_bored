@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{% block title %}I'm Bored{% endblock %}</title>
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v=5">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='apple-touch-icon.png') }}?v=5">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block extra_css %}{% endblock %}
 </head>
@@ -11,6 +13,14 @@
     <div class="container">
         {% block content %}{% endblock %}
     </div>
+
+    <!-- Bottom Navigation (Mobile Only) -->
+    <nav class="bottom-nav" id="bottomNav" role="navigation" aria-label="Activity type filter">
+        <div class="bottom-nav-scroll" role="tablist">
+            <!-- Items dynamically rendered by JavaScript -->
+        </div>
+    </nav>
+
     <script src="{{ url_for('static', filename='js/activities.js') }}"></script>
     {% block extra_js %}{% endblock %}
 </body>
