@@ -192,19 +192,17 @@ function renderActivities() {
 
     // Update header
     if (header) {
-        header.textContent = currentType ? `${currentType} Activities` : 'All Activities';
+        header.textContent = currentType ? `${currentType}` : 'activities';
     }
 
-    // Get activities to display
-    let activities = [];
+    // If viewing all, render in grid by category
     if (currentType === null) {
-        // Show all activities from all types
-        Object.values(allActivities).forEach(typeActivities => {
-            activities = activities.concat(typeActivities);
-        });
-    } else {
-        activities = allActivities[currentType] || [];
+        renderCategoryGrid(listDiv);
+        return;
     }
+
+    // Get activities to display for specific type
+    const activities = allActivities[currentType] || [];
 
     // Separate completed and uncompleted
     const uncompleted = activities.filter(a => !a.completed);
@@ -246,6 +244,49 @@ function renderActivities() {
             `;
         }
     }
+
+    listDiv.innerHTML = html;
+}
+
+function renderCategoryGrid(listDiv) {
+    // Sort types with 'general' first, 'todo' second, then alphabetically
+    const sortedTypes = Object.keys(allActivities).sort((a, b) => {
+        if (a === 'general') return -1;
+        if (b === 'general') return 1;
+        if (a === 'todo') return -1;
+        if (b === 'todo') return 1;
+        return a.localeCompare(b);
+    });
+
+    let html = '<div class="category-grid">';
+
+    sortedTypes.forEach(type => {
+        const activities = allActivities[type].filter(a => !a.completed);
+
+        if (activities.length === 0) return;
+
+        html += `
+            <div class="category-card">
+                <div class="category-card-header">${escapeHtml(type)}</div>
+                <div class="category-card-content">
+        `;
+
+        activities.forEach(activity => {
+            html += `
+                <div class="activity-grid-item">
+                    <span class="activity-id">${activity.id}</span>
+                    <span class="activity-grid-description">${escapeHtml(activity.description)}</span>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+            </div>
+        `;
+    });
+
+    html += '</div>';
 
     listDiv.innerHTML = html;
 }

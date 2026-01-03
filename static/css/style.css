@@ -1,14 +1,14 @@
-/* One Half Dark theme with soft styling */
+/* Terminal CLI theme */
 
 :root {
-    /* Base colors */
-    --bg-dark: #282C34;
-    --bg-medium: #21252B;
-    --bg-light: #2C313A;
-    --text-dim: #5A6374;
-    --text-normal: #DCDFE4;
+    /* Base colors - darker terminal theme */
+    --bg-dark: #1e1e1e;
+    --bg-medium: #252525;
+    --bg-light: #2a2a2a;
+    --text-dim: #6b7280;
+    --text-normal: #d1d5db;
     --text-bright: #FFFFFF;
-    --border: #3E4451;
+    --border: #98C379;
 
     /* Palette - One Half Dark accent colors */
     --blue: #61AFEF;
@@ -21,9 +21,9 @@
     --violet: #C678DD;
 
     /* UI Element colors - Change these to customize the theme */
-    --color-primary: var(--magenta);
+    --color-primary: var(--green);
     /* Main buttons, primary actions */
-    --color-secondary: var(--magenta);
+    --color-secondary: var(--green);
     /* Nav items, secondary elements */
     --color-accent: var(--yellow);
     /* Tags, badges, highlights */
@@ -51,7 +51,7 @@ html {
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Consolas', monospace;
     background: var(--bg-primary);
     color: var(--text-primary);
     height: 100%;
@@ -87,8 +87,9 @@ body {
 /* Sidebar Navigation */
 .sidebar {
     width: 250px;
-    background: var(--bg-secondary);
-    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.04);
+    background: var(--bg-dark);
+    border-right: 1px solid var(--border-color);
+    box-shadow: none;
     padding: 1.5rem 0;
     overflow-y: auto;
 }
@@ -107,24 +108,26 @@ body {
 }
 
 .nav-item {
-    padding: 0.875rem 1.5rem;
+    padding: 0.75rem 1.5rem;
     margin: 0.25rem 0.75rem;
     cursor: pointer;
     color: var(--text-primary);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    border-radius: 12px;
-    font-weight: 500;
+    transition: all 0.2s ease;
+    border-radius: 6px;
+    font-weight: 400;
+    font-size: 0.9rem;
 }
 
 .nav-item:hover {
     background: var(--bg-light);
-    color: var(--color-secondary);
-    transform: translateX(2px);
+    color: var(--green);
 }
 
 .nav-item.active {
-    background: color-mix(in srgb, var(--color-secondary) 15%, transparent);
-    color: var(--color-secondary);
+    background: transparent;
+    color: var(--green);
+    border-left: 3px solid var(--green);
+    padding-left: calc(1.5rem - 3px);
 }
 
 .nav-item-count {
@@ -167,29 +170,31 @@ body {
     }
 }
 
-/* Soft Panel */
+/* Terminal Panel */
 .panel {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 16px;
-    padding: 2rem;
+    background: transparent;
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
     margin-bottom: 1.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    transition: box-shadow 0.3s ease;
+    box-shadow: none;
+    transition: border-color 0.2s ease;
 }
 
 .panel:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-color: color-mix(in srgb, var(--border-color) 80%, white);
 }
 
 .panel-header {
-    font-weight: 600;
-    color: var(--text-emphasis);
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
+    font-weight: 500;
+    color: var(--green);
+    margin: -1.5rem -1.5rem 1.5rem -1.5rem;
+    padding: 0.75rem 1rem;
     border-bottom: 2px solid var(--border-color);
-    letter-spacing: -0.01em;
-    font-size: 1rem;
+    letter-spacing: 0.05em;
+    font-size: 0.875rem;
+    text-align: center;
+    text-transform: lowercase;
 }
 
 .panel-content {
@@ -209,22 +214,21 @@ body {
 }
 
 .bored-button {
-    padding: 1rem 2.5rem;
-    background: linear-gradient(135deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 80%, black) 100%);
-    color: var(--bg-primary);
-    border: none;
-    border-radius: 12px;
+    padding: 0.875rem 2rem;
+    background: transparent;
+    color: var(--green);
+    border: 2px solid var(--green);
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 1rem;
+    font-size: 0.9rem;
     font-family: inherit;
-    font-weight: 600;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    /* box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 30%, transparent); */
+    font-weight: 500;
+    transition: all 0.2s ease;
 }
 
 .bored-button:hover {
-    transform: translateY(-2px);
-    /* box-shadow: 0 8px 20px color-mix(in srgb, var(--color-primary) 40%, transparent); */
+    background: var(--green);
+    color: var(--bg-dark);
 }
 
 .bored-button:active {
@@ -247,17 +251,17 @@ body {
 .activity-result .activity-type {
     margin-left: 0;
     text-align: left;
-    color: var(--color-accent);
+    color: var(--cyan);
     font-size: 0.875rem;
-    font-weight: 500;
-    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-    padding: 0.25rem 0.75rem;
-    border-radius: 8px;
+    font-weight: 400;
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
 }
 
 .activity-result span {
-    font-size: 1rem;
-    color: var(--text-emphasis);
+    font-size: 0.95rem;
+    color: var(--text-normal);
     line-height: 1.6;
 }
 
@@ -266,9 +270,60 @@ body {
     list-style: none;
 }
 
+/* Category Grid (CLI-style) */
+.category-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.category-card {
+    background: transparent;
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 0;
+    overflow: hidden;
+}
+
+.category-card-header {
+    font-weight: 500;
+    color: var(--green);
+    padding: 0.75rem 1rem;
+    border-bottom: 2px solid var(--border-color);
+    letter-spacing: 0.05em;
+    font-size: 0.875rem;
+    text-align: center;
+    text-transform: lowercase;
+}
+
+.category-card-content {
+    padding: 1rem;
+}
+
+.activity-grid-item {
+    padding: 0.5rem 0;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    line-height: 1.6;
+}
+
+.activity-id {
+    color: var(--cyan);
+    font-weight: 500;
+    flex-shrink: 0;
+    min-width: 2rem;
+}
+
+.activity-grid-description {
+    flex: 1;
+    color: var(--text-normal);
+}
+
 .activity-item {
-    padding: 1rem 0;
-    border-bottom: 1px solid var(--border-color);
+    padding: 0.75rem 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 30%, transparent);
     display: flex;
     align-items: center;
     gap: 1rem;
@@ -277,9 +332,9 @@ body {
 
 .activity-item:hover {
     background: var(--bg-light);
-    margin: 0 -1rem;
-    padding: 1rem 1rem;
-    border-radius: 8px;
+    margin: 0 -0.5rem;
+    padding: 0.75rem 0.5rem;
+    border-radius: 4px;
 }
 
 .activity-item:last-child {
@@ -348,40 +403,39 @@ body {
 }
 
 .activity-type {
-    color: var(--color-accent);
+    color: var(--yellow);
     font-size: 0.8125rem;
     margin-left: 1rem;
     flex-shrink: 0;
     text-align: right;
-    font-weight: 500;
-    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-    padding: 0.25rem 0.75rem;
-    border-radius: 8px;
+    font-weight: 400;
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
 }
 
 .delete-btn {
     padding: 0.375rem 0.75rem;
-    background: color-mix(in srgb, var(--color-error) 10%, transparent);
-    color: var(--color-error);
-    border: none;
-    border-radius: 8px;
+    background: transparent;
+    color: var(--red);
+    border: 1px solid var(--red);
+    border-radius: 4px;
     cursor: pointer;
     font-size: 0.8125rem;
     font-family: inherit;
-    font-weight: 500;
+    font-weight: 400;
     transition: all 0.2s ease;
 }
 
 .delete-btn:hover {
-    background: var(--color-error);
-    color: white;
-    transform: scale(1.05);
+    background: var(--red);
+    color: var(--bg-dark);
 }
 
 .delete-btn.confirm-delete {
-    background: var(--color-error);
-    color: white;
-    font-weight: 600;
+    background: var(--red);
+    color: var(--bg-dark);
+    font-weight: 500;
 }
 
 /* Collapsible Section */
@@ -431,39 +485,38 @@ body {
 .add-form input {
     flex: 1;
     padding: 0.75rem 1rem;
-    background: var(--bg-light);
+    background: transparent;
     border: 2px solid var(--border-color);
-    border-radius: 10px;
+    border-radius: 6px;
     color: var(--text-primary);
     font-family: inherit;
-    font-size: 0.9375rem;
+    font-size: 0.9rem;
     transition: all 0.2s ease;
 }
 
 .add-form input:focus {
     outline: none;
-    border-color: var(--color-primary);
-    background: var(--bg-secondary);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 15%, transparent);
+    border-color: var(--cyan);
+    background: transparent;
+    box-shadow: none;
 }
 
 .add-form button {
     padding: 0.75rem 1.5rem;
-    background: var(--color-primary);
-    color: var(--bg-primary);
-    border: none;
-    border-radius: 10px;
+    background: transparent;
+    color: var(--green);
+    border: 2px solid var(--green);
+    border-radius: 6px;
     cursor: pointer;
     font-family: inherit;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    /* box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 30%, transparent); */
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
 }
 
 .add-form button:hover {
-    transform: translateY(-1px);
-    /* box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 40%, transparent); */
+    background: var(--green);
+    color: var(--bg-dark);
 }
 
 /* Notifications */
@@ -471,23 +524,23 @@ body {
     position: fixed;
     top: 1.5rem;
     right: 1.5rem;
-    padding: 1.25rem 1.75rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    padding: 1rem 1.5rem;
+    background: var(--bg-medium);
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: none;
     z-index: 1000;
-    animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: slideIn 0.3s ease;
 }
 
 .notification.success {
-    border-left: 4px solid var(--color-success);
-    background: linear-gradient(to right, color-mix(in srgb, var(--color-success) 5%, transparent), var(--bg-secondary));
+    border-color: var(--green);
+    color: var(--green);
 }
 
 .notification.error {
-    border-left: 4px solid var(--color-error);
-    background: linear-gradient(to right, color-mix(in srgb, var(--color-error) 5%, transparent), var(--bg-secondary));
+    border-color: var(--red);
+    color: var(--red);
 }
 
 @keyframes slideIn {
@@ -504,8 +557,8 @@ body {
 
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -514,12 +567,11 @@ body {
 
 ::-webkit-scrollbar-thumb {
     background: var(--border-color);
-    border-radius: 10px;
-    border: 2px solid var(--bg-primary);
+    border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+    background: color-mix(in srgb, var(--border-color) 80%, white);
 }
 
 /* ===== MOBILE RESPONSIVE STYLES ===== */
@@ -538,9 +590,9 @@ body {
         right: 0 !important;
         width: 100%;
         height: 60px;
-        background: var(--bg-secondary);
-        border-bottom: 1px solid var(--border-color);
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        background: var(--bg-dark);
+        border-bottom: 2px solid var(--border-color);
+        box-shadow: none;
         z-index: 9999;
         transform: translate3d(0, 0, 0);
         -webkit-transform: translate3d(0, 0, 0);
@@ -568,21 +620,21 @@ body {
     gap: 0.25rem;
     cursor: pointer;
     transition: all 0.2s ease;
-    border-top: 3px solid transparent;
+    border-bottom: 3px solid transparent;
     color: var(--text-secondary);
     flex-shrink: 0;
     white-space: nowrap;
+    font-size: 0.85rem;
 }
 
 .bottom-nav-item:active {
     background: var(--bg-light);
-    transform: scale(0.95);
 }
 
 .bottom-nav-item.active {
-    color: var(--color-secondary);
-    border-top-color: var(--color-secondary);
-    background: color-mix(in srgb, var(--color-secondary) 10%, transparent);
+    color: var(--green);
+    border-bottom-color: var(--green);
+    background: transparent;
 }
 
 .bottom-nav-label {
@@ -593,7 +645,7 @@ body {
 .bottom-nav-count {
     font-size: 0.75rem;
     font-weight: 400;
-    color: var(--color-accent);
+    color: var(--yellow);
 }
 
 .bottom-nav-item.new-category-btn {
@@ -614,10 +666,16 @@ body {
         padding-bottom: 80px;
     }
 
+    /* Category Grid - Single column on mobile */
+    .category-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
     /* Panels */
     .panel {
         padding: 1.25rem;
-        border-radius: 12px;
+        border-radius: 8px;
         margin-bottom: 1rem;
     }
 

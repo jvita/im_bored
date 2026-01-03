@@ -15,22 +15,42 @@ console = Console()
 def parse_activity(activity: str) -> dict:
     """Parse an activity string into a structured dictionary.
 
-    Format: [type] description
+    Format: [type] description #tag1 #tag2 --duration 15min
     If no type is specified, defaults to 'general'
+    Hashtags are extracted as tags
+    --duration flag specifies duration
     """
+    from im_bored.db import parse_tags_from_description
+
+    # Extract type
     type_pattern = r"^\[(.*?)\]\s*"
     match = re.match(type_pattern, activity)
 
     if match:
         activity_type = match.group(1).strip()
-        activity_description = activity[match.end() :].strip()
+        remaining = activity[match.end() :].strip()
     else:
         activity_type = "general"
-        activity_description = activity.strip()
+        remaining = activity.strip()
+
+    # Extract duration flag
+    duration_match = re.search(r'--duration\s+(\S+)', remaining)
+    duration = None
+    if duration_match:
+        duration_str = duration_match.group(1)
+        # Validate duration
+        if duration_str in ['5min', '15min', '30min', '1h', '1h+']:
+            duration = duration_str
+        remaining = remaining.replace(duration_match.group(0), '').strip()
+
+    # Extract hashtags and clean description
+    clean_description, tags = parse_tags_from_description(remaining)
 
     return {
         "type": activity_type,
-        "description": activity_description,
+        "description": clean_description,
+        "tags": tags,
+        "duration": duration,
         "completed": 0,
     }
 
@@ -54,11 +74,23 @@ def create_panel(data, title, width=None):
     table.add_column("Description")
 
     for ei, entry in data:
+        # Build description with tags and duration
+        desc = entry["description"]
+
+        # Add tags if present
+        if entry.get('tags'):
+            tag_str = " ".join(f"[dim]#{tag['name']}[/dim]" for tag in entry['tags'])
+            desc = f"{desc} {tag_str}"
+
+        # Add duration if present
+        if entry.get('duration'):
+            desc = f"{desc} [dim cyan]({entry['duration']})[/dim cyan]"
+
         if show_done:
             done_mark = "✔" if entry["completed"] else " "
-            table.add_row(str(ei), done_mark, entry["description"])
+            table.add_row(str(ei), done_mark, desc)
         else:
-            table.add_row(str(ei), entry["description"])
+            table.add_row(str(ei), desc)
 
     return Panel(
         table,
@@ -73,6 +105,12 @@ def main():
     parser = argparse.ArgumentParser(description="im-bored CLI")
     parser.add_argument(
         "--type", type=str, help="Filter activities by type (for default command)"
+    )
+    parser.add_argument(
+        "--duration", type=str, help="Filter activities by duration (for default command)"
+    )
+    parser.add_argument(
+        "--tags", type=str, help="Filter activities by tags (comma-separated, for default command)"
     )
 
     subparser = parser.add_subparsers(dest="command")
@@ -105,6 +143,44 @@ def main():
 
     subparser.add_parser("todo", help="Show the to-do list")
 
+    # Tag management commands
+    tag_parser = subparser.add_parser("tag", help="Manage tags")
+    tag_subparser = tag_parser.add_subparsers(dest="tag_command")
+
+    tag_subparser.add_parser("list", help="List all tags")
+
+    tag_create_parser = tag_subparser.add_parser("create", help="Create a new tag")
+    tag_create_parser.add_argument("name", type=str, help="Tag name")
+
+    tag_delete_parser = tag_subparser.add_parser("delete", help="Delete a tag")
+    tag_delete_parser.add_argument("name", type=str, help="Tag name")
+
+    # Vibe management commands
+    vibe_parser = subparser.add_parser("vibe", help="Manage vibes")
+    vibe_subparser = vibe_parser.add_subparsers(dest="vibe_command")
+
+    vibe_subparser.add_parser("list", help="List all vibes")
+
+    vibe_create_parser = vibe_subparser.add_parser("create", help="Create a new vibe")
+    vibe_create_parser.add_argument("name", type=str, help="Vibe name")
+
+    vibe_edit_parser = vibe_subparser.add_parser("edit", help="Edit a vibe's tags")
+    vibe_edit_parser.add_argument("name", type=str, help="Vibe name")
+
+    vibe_delete_parser = vibe_subparser.add_parser("delete", help="Delete a vibe")
+    vibe_delete_parser.add_argument("name", type=str, help="Vibe name")
+
+    # Add --vibe flag to default command
+    parser.add_argument(
+        "--vibe", type=str, help="Filter activities by vibe (for default command)"
+    )
+
+    # Stats command
+    stats_parser = subparser.add_parser("stats", help="Show analytics and statistics")
+    stats_parser.add_argument(
+        "--days", type=int, default=30, help="Number of days to analyze (default: 30)"
+    )
+
     args = parser.parse_args()
 
     # Check database exists
@@ -117,17 +193,26 @@ def main():
     command = args.command
 
     if command == "add":
+        from im_bored.db import add_activity_with_tags
+
         parsed = parse_activity(" ".join(args.activity))
         activity_type = parsed["type"]
         description = parsed["description"]
+        tags = parsed["tags"]
+        duration = parsed["duration"]
 
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO activities (type, description, completed) VALUES (?, ?, ?)",
-                (parsed["type"], parsed["description"], 0),
-            )
-        console.print(f"Added activity: \\[{activity_type}] {description}")
+        # Add activity with tags
+        activity_id = add_activity_with_tags(activity_type, description, tags, duration)
+
+        # Build output message
+        msg = f"Added activity: \\[{activity_type}] {description}"
+        if tags:
+            tag_str = " ".join(f"#{tag}" for tag in tags)
+            msg += f" {tag_str}"
+        if duration:
+            msg += f" ({duration})"
+
+        console.print(msg)
 
     elif command == "remove":
         with get_db_connection() as conn:
@@ -142,12 +227,18 @@ def main():
             activity_id = activities[args.index]["id"]
             cursor.execute("DELETE FROM activities WHERE id = ?", (activity_id,))
     elif command == "activities":
+        from im_bored.db import get_tags_for_activity
+
         console.print("")
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM activities ORDER BY id")
             activities = [dict(row) for row in cursor.fetchall()]
+
+        # Fetch tags for each activity
+        for activity in activities:
+            activity['tags'] = get_tags_for_activity(activity['id'])
 
         grouped_data = {}
         for ei, activity in enumerate(activities):
@@ -176,12 +267,18 @@ def main():
         console.print()
 
     elif command == "todo":
+        from im_bored.db import get_tags_for_activity
+
         console.print("")
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM activities ORDER BY id")
             activities = [dict(row) for row in cursor.fetchall()]
+
+        # Fetch tags for each activity
+        for activity in activities:
+            activity['tags'] = get_tags_for_activity(activity['id'])
 
         grouped_data = {}
         for ei, activity in enumerate(activities):
@@ -194,6 +291,244 @@ def main():
             console.print(panel)
         else:
             console.print("No todo items found.")
+        console.print()
+
+    elif command == "tag":
+        from im_bored.db import get_all_tags, create_tag, get_tag_by_name, delete_tag
+
+        tag_command = args.tag_command
+
+        if tag_command == "list":
+            tags = get_all_tags()
+            if tags:
+                console.print("\n[bold cyan]Available Tags:[/bold cyan]")
+                table = Table(show_header=True, box=None, header_style="cyan")
+                table.add_column("ID", justify="right", width=5)
+                table.add_column("Name")
+
+                for tag in tags:
+                    table.add_row(str(tag['id']), f"#{tag['name']}")
+
+                console.print(table)
+                console.print()
+            else:
+                console.print("No tags found.")
+
+        elif tag_command == "create":
+            tag_id = create_tag(args.name)
+            console.print(f"✓ Created tag: #{args.name} (ID: {tag_id})")
+
+        elif tag_command == "delete":
+            tag = get_tag_by_name(args.name)
+            if tag:
+                if delete_tag(tag['id']):
+                    console.print(f"✓ Deleted tag: #{args.name}")
+                else:
+                    console.print(f"✗ Failed to delete tag: #{args.name}")
+            else:
+                console.print(f"✗ Tag not found: #{args.name}")
+
+    elif command == "vibe":
+        from im_bored.db import (
+            get_all_vibes,
+            create_vibe,
+            get_vibe_by_name,
+            delete_vibe,
+            update_vibe,
+            get_all_tags,
+            get_tag_by_name
+        )
+        from rich.prompt import Prompt
+
+        vibe_command = args.vibe_command
+
+        if vibe_command == "list":
+            vibes = get_all_vibes()
+            if vibes:
+                console.print("\n[bold cyan]Available Vibes:[/bold cyan]")
+                for vibe in vibes:
+                    tag_str = ", ".join(f"#{tag['name']}" for tag in vibe['tags'])
+                    desc = f" - {vibe['description']}" if vibe.get('description') else ""
+                    console.print(f"  [bold]{vibe['name']}[/bold]{desc}")
+                    console.print(f"    Tags: {tag_str}")
+                console.print()
+            else:
+                console.print("No vibes found.")
+
+        elif vibe_command == "create":
+            # Get all tags for selection
+            all_tags = get_all_tags()
+            if not all_tags:
+                console.print("✗ No tags available. Create some tags first with 'imbored tag create <name>'")
+                return
+
+            # Show available tags
+            console.print("\n[bold cyan]Available Tags:[/bold cyan]")
+            for i, tag in enumerate(all_tags, 1):
+                console.print(f"  {i}. #{tag['name']}")
+
+            # Prompt for description
+            description = Prompt.ask("\nVibe description (optional)", default="")
+
+            # Prompt for tags
+            console.print("\nEnter tag numbers (comma-separated) or tag names (comma-separated with #):")
+            tag_input = Prompt.ask("Tags")
+
+            # Parse tag input
+            selected_tag_ids = []
+            for item in tag_input.split(','):
+                item = item.strip()
+                if item.startswith('#'):
+                    # Tag name
+                    tag_name = item[1:]
+                    tag = get_tag_by_name(tag_name)
+                    if tag:
+                        selected_tag_ids.append(tag['id'])
+                    else:
+                        console.print(f"[yellow]Warning: Tag '{item}' not found, skipping[/yellow]")
+                elif item.isdigit():
+                    # Tag number
+                    idx = int(item) - 1
+                    if 0 <= idx < len(all_tags):
+                        selected_tag_ids.append(all_tags[idx]['id'])
+                    else:
+                        console.print(f"[yellow]Warning: Invalid tag number {item}, skipping[/yellow]")
+
+            if selected_tag_ids:
+                vibe_id = create_vibe(args.name, description, selected_tag_ids)
+                tag_names = [tag['name'] for tag in all_tags if tag['id'] in selected_tag_ids]
+                tag_str = ", ".join(f"#{name}" for name in tag_names)
+                console.print(f"\n✓ Created vibe: {args.name} with tags: {tag_str}")
+            else:
+                console.print("✗ No valid tags selected. Vibe not created.")
+
+        elif vibe_command == "edit":
+            vibe = get_vibe_by_name(args.name)
+            if not vibe:
+                console.print(f"✗ Vibe not found: {args.name}")
+                return
+
+            # Get all tags for selection
+            all_tags = get_all_tags()
+            current_tag_names = {tag['name'] for tag in vibe['tags']}
+
+            # Show available tags with current selection marked
+            console.print(f"\n[bold cyan]Editing vibe: {args.name}[/bold cyan]")
+            console.print("\n[bold]Available Tags:[/bold] (✓ = currently selected)")
+            for i, tag in enumerate(all_tags, 1):
+                mark = "✓" if tag['name'] in current_tag_names else " "
+                console.print(f"  {mark} {i}. #{tag['name']}")
+
+            # Prompt for new tags
+            console.print("\nEnter tag numbers (comma-separated) or tag names (comma-separated with #):")
+            console.print("[dim]Leave blank to keep current tags[/dim]")
+            tag_input = Prompt.ask("New tags", default="")
+
+            if not tag_input.strip():
+                console.print("No changes made.")
+                return
+
+            # Parse tag input
+            selected_tag_ids = []
+            for item in tag_input.split(','):
+                item = item.strip()
+                if item.startswith('#'):
+                    # Tag name
+                    tag_name = item[1:]
+                    tag = get_tag_by_name(tag_name)
+                    if tag:
+                        selected_tag_ids.append(tag['id'])
+                elif item.isdigit():
+                    # Tag number
+                    idx = int(item) - 1
+                    if 0 <= idx < len(all_tags):
+                        selected_tag_ids.append(all_tags[idx]['id'])
+
+            if selected_tag_ids:
+                update_vibe(vibe['id'], vibe['name'], vibe.get('description', ''), selected_tag_ids)
+                tag_names = [tag['name'] for tag in all_tags if tag['id'] in selected_tag_ids]
+                tag_str = ", ".join(f"#{name}" for name in tag_names)
+                console.print(f"\n✓ Updated vibe: {args.name} with tags: {tag_str}")
+            else:
+                console.print("✗ No valid tags selected.")
+
+        elif vibe_command == "delete":
+            vibe = get_vibe_by_name(args.name)
+            if vibe:
+                if delete_vibe(vibe['id']):
+                    console.print(f"✓ Deleted vibe: {args.name}")
+                else:
+                    console.print(f"✗ Failed to delete vibe: {args.name}")
+            else:
+                console.print(f"✗ Vibe not found: {args.name}")
+
+    elif command == "stats":
+        from im_bored.db import get_decision_stats
+
+        stats = get_decision_stats(days=args.days)
+
+        console.print(f"\n[bold cyan]Analytics (Last {stats['days']} days)[/bold cyan]\n")
+
+        # Overall metrics
+        metrics_table = Table(show_header=False, box=None, padding=(0, 2))
+        metrics_table.add_column("Metric", style="bold")
+        metrics_table.add_column("Value", justify="right")
+
+        metrics_table.add_row("Total Rolls", str(stats['total_rolls']))
+        metrics_table.add_row("Completed", f"[green]{stats['completed_count']}[/green]")
+        metrics_table.add_row("Skipped", f"[yellow]{stats['skipped_count']}[/yellow]")
+        metrics_table.add_row("Ignored", f"[dim]{stats['ignored_count']}[/dim]")
+        metrics_table.add_row("Completion Rate", f"{stats['completion_rate']:.1f}%")
+        metrics_table.add_row("Skip Rate", f"{stats['skip_rate']:.1f}%")
+
+        console.print(Panel(metrics_table, title="Overview", border_style="cyan"))
+
+        # Most completed activities
+        if stats['most_completed']:
+            console.print("\n[bold green]Most Completed Activities:[/bold green]")
+            completed_table = Table(show_header=True, box=None, header_style="green")
+            completed_table.add_column("Activity", style="bold")
+            completed_table.add_column("Type", style="dim")
+            completed_table.add_column("Count", justify="right")
+
+            for activity in stats['most_completed']:
+                completed_table.add_row(
+                    activity['description'],
+                    f"[{activity['type']}]",
+                    str(activity['count'])
+                )
+
+            console.print(completed_table)
+
+        # Most skipped activities
+        if stats['most_skipped']:
+            console.print("\n[bold yellow]Most Skipped Activities:[/bold yellow]")
+            skipped_table = Table(show_header=True, box=None, header_style="yellow")
+            skipped_table.add_column("Activity", style="bold")
+            skipped_table.add_column("Type", style="dim")
+            skipped_table.add_column("Count", justify="right")
+
+            for activity in stats['most_skipped']:
+                skipped_table.add_row(
+                    activity['description'],
+                    f"[{activity['type']}]",
+                    str(activity['count'])
+                )
+
+            console.print(skipped_table)
+
+        # Vibe usage
+        if stats['vibe_usage']:
+            console.print("\n[bold magenta]Vibe Usage:[/bold magenta]")
+            vibe_table = Table(show_header=True, box=None, header_style="magenta")
+            vibe_table.add_column("Vibe", style="bold")
+            vibe_table.add_column("Uses", justify="right")
+
+            for vibe_name, count in stats['vibe_usage'].items():
+                vibe_table.add_row(vibe_name, str(count))
+
+            console.print(vibe_table)
+
         console.print()
 
     elif args.command == "complete":
@@ -227,23 +562,46 @@ def main():
             )
         console.print(f"Marked activity {args.index} as incomplete.")
     else:
-        # Default imbored command - pick a random activity
-        filter_type = args.type
+        # Default imbored command - pick a random activity with filtering
+        from im_bored.db import get_random_uncompleted_activity_filtered, get_tag_by_name, get_vibe_by_name
 
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            if args.type:
-                cursor.execute(
-                    "SELECT * FROM activities WHERE type = ? ORDER BY RANDOM() LIMIT 1",
-                    (args.type,),
-                )
+        # Prepare filters
+        activity_types = [args.type] if args.type else None
+        duration = args.duration if args.duration else None
+
+        # Parse vibe name to vibe ID
+        vibe_id = None
+        if args.vibe:
+            vibe = get_vibe_by_name(args.vibe)
+            if vibe:
+                vibe_id = vibe['id']
+                console.print(f"[dim cyan]Applying vibe: {args.vibe}[/dim cyan]")
             else:
-                cursor.execute("SELECT * FROM activities ORDER BY RANDOM() LIMIT 1")
+                console.print(f"[yellow]Warning: Vibe '{args.vibe}' not found[/yellow]")
 
-            choice = cursor.fetchone()
+        # Parse tag names to tag IDs
+        tag_ids = None
+        if args.tags:
+            tag_names = [t.strip() for t in args.tags.split(',')]
+            tag_ids = []
+            for tag_name in tag_names:
+                tag = get_tag_by_name(tag_name)
+                if tag:
+                    tag_ids.append(tag['id'])
+                else:
+                    console.print(f"[yellow]Warning: Tag '#{tag_name}' not found, ignoring[/yellow]")
+            if not tag_ids:
+                tag_ids = None
+
+        # Get random activity
+        choice = get_random_uncompleted_activity_filtered(
+            activity_types=activity_types,
+            tag_ids=tag_ids,
+            duration=duration,
+            vibe_id=vibe_id
+        )
 
         if choice:
-            choice = dict(choice)
             panel = Panel(
                 f"\n[cyan]({choice['type']})[/cyan]\n\n[bold]{choice['description']}[/bold]",
                 title="How about you...",
@@ -256,8 +614,60 @@ def main():
             console.print()
             console.print(panel)
             console.print()
+
+            # Prompt for outcome
+            from im_bored.db import log_decision_event, update_activity_completion
+            import uuid
+
+            console.print("[dim]Mark as: [c]ompleted, [s]kipped, [i]gnored, or [Enter] to skip[/dim]")
+            outcome_input = input("Outcome: ").strip().lower()
+
+            if outcome_input:
+                # Generate session ID (could be persisted across CLI invocations for session tracking)
+                session_id = str(uuid.uuid4())
+
+                if outcome_input == 'c':
+                    # Mark as completed
+                    log_decision_event(
+                        activity_id=choice['id'],
+                        outcome='COMPLETED',
+                        vibe_id=vibe_id,
+                        filter_tags=tag_ids,
+                        session_id=session_id
+                    )
+                    update_activity_completion(choice['id'], True)
+                    console.print("[green]✓ Marked as completed![/green]")
+                elif outcome_input == 's':
+                    # Log as skipped
+                    log_decision_event(
+                        activity_id=choice['id'],
+                        outcome='SKIPPED',
+                        vibe_id=vibe_id,
+                        filter_tags=tag_ids,
+                        session_id=session_id
+                    )
+                    console.print("[yellow]→ Marked as skipped[/yellow]")
+                elif outcome_input == 'i':
+                    # Log as ignored
+                    log_decision_event(
+                        activity_id=choice['id'],
+                        outcome='IGNORED',
+                        vibe_id=vibe_id,
+                        filter_tags=tag_ids,
+                        session_id=session_id
+                    )
+                    console.print("[dim]✕ Marked as ignored[/dim]")
         else:
-            filter_msg = f" of type '{filter_type}'" if filter_type else ""
+            # Build filter message
+            filters = []
+            if args.type:
+                filters.append(f"type '{args.type}'")
+            if duration:
+                filters.append(f"duration '{duration}'")
+            if args.tags:
+                filters.append(f"tags '{args.tags}'")
+
+            filter_msg = " with " + ", ".join(filters) if filters else ""
             console.print(
-                f"No activities found{filter_msg}. Add some with 'imbored add \"[type] activity\"'"
+                f"No uncompleted activities found{filter_msg}. Add some with 'imbored add \"[type] activity\"'"
             )
