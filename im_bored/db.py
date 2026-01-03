@@ -58,15 +58,18 @@ def get_random_uncompleted_activity_filtered(
 
     Args:
         activity_types: Optional list of types to filter by
-        tag_ids: Optional list of tag IDs (activity must have ALL these tags)
+        tag_ids: Optional list of tag IDs (when vibe_id is None: activity must have ALL these tags; when vibe_id is set: activity must have ANY of the vibe's tags)
         duration: Optional duration filter ('5min', '15min', '30min', '1h', '1h+')
-        vibe_id: Optional vibe ID (will apply vibe's tag filters)
+        vibe_id: Optional vibe ID (will apply vibe's tag filters, matching ANY tag)
 
     Returns:
         dict: Activity data or None if no matching activities exist
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
+
+        # Track whether we're using vibe tags (affects matching logic)
+        use_any_tag_matching = False
 
         # If vibe_id is provided, get its tags
         if vibe_id is not None:
@@ -80,6 +83,9 @@ def get_random_uncompleted_activity_filtered(
                 tag_ids = list(set(tag_ids + vibe_tag_ids))
             else:
                 tag_ids = vibe_tag_ids
+
+            # Use ANY matching for vibes
+            use_any_tag_matching = True
 
         # Build the query
         query = "SELECT * FROM activities WHERE completed = 0"
@@ -96,16 +102,25 @@ def get_random_uncompleted_activity_filtered(
             query += " AND duration = ?"
             params.append(duration)
 
-        # Filter by tags (activity must have ALL specified tags)
+        # Filter by tags
         if tag_ids:
-            query += """ AND id IN (
-                SELECT activity_id FROM activity_tags
-                WHERE tag_id IN ({})
-                GROUP BY activity_id
-                HAVING COUNT(DISTINCT tag_id) = ?
-            )""".format(','.join('?' * len(tag_ids)))
-            params.extend(tag_ids)
-            params.append(len(tag_ids))
+            if use_any_tag_matching:
+                # For vibes: activity must have ANY of the specified tags
+                query += """ AND id IN (
+                    SELECT DISTINCT activity_id FROM activity_tags
+                    WHERE tag_id IN ({})
+                )""".format(','.join('?' * len(tag_ids)))
+                params.extend(tag_ids)
+            else:
+                # For explicit tag filters: activity must have ALL specified tags
+                query += """ AND id IN (
+                    SELECT activity_id FROM activity_tags
+                    WHERE tag_id IN ({})
+                    GROUP BY activity_id
+                    HAVING COUNT(DISTINCT tag_id) = ?
+                )""".format(','.join('?' * len(tag_ids)))
+                params.extend(tag_ids)
+                params.append(len(tag_ids))
 
         # Random selection
         query += " ORDER BY RANDOM() LIMIT 1"
