@@ -41,7 +41,7 @@ def create_panel(data, title, width=None):
         show_edge=False,
         pad_edge=False,
         box=None,
-        header_style="magenta",
+        header_style="cyan",
         row_styles=["", "yellow"],
     )
     table.add_column("ID", justify="right", width=3)
@@ -63,7 +63,7 @@ def create_panel(data, title, width=None):
     return Panel(
         table,
         title=title,
-        border_style="cyan",
+        border_style="magenta",
         width=width,
     )
 
@@ -125,7 +125,7 @@ def main():
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO activities (type, description, completed) VALUES (?, ?, ?)",
-                (parsed["type"], parsed["description"], 0)
+                (parsed["type"], parsed["description"], 0),
             )
         console.print(f"Added activity: \\[{activity_type}] {description}")
 
@@ -139,7 +139,7 @@ def main():
                 console.print("Invalid index.")
                 return
 
-            activity_id = activities[args.index]['id']
+            activity_id = activities[args.index]["id"]
             cursor.execute("DELETE FROM activities WHERE id = ?", (activity_id,))
     elif command == "activities":
         console.print("")
@@ -206,10 +206,9 @@ def main():
                 console.print("Invalid index.")
                 return
 
-            activity_id = activities[args.index]['id']
+            activity_id = activities[args.index]["id"]
             cursor.execute(
-                "UPDATE activities SET completed = ? WHERE id = ?",
-                (1, activity_id)
+                "UPDATE activities SET completed = ? WHERE id = ?", (1, activity_id)
             )
         console.print(f"Marked activity {args.index} as complete.")
     elif args.command == "incomplete":
@@ -222,10 +221,9 @@ def main():
                 console.print("Invalid index.")
                 return
 
-            activity_id = activities[args.index]['id']
+            activity_id = activities[args.index]["id"]
             cursor.execute(
-                "UPDATE activities SET completed = ? WHERE id = ?",
-                (0, activity_id)
+                "UPDATE activities SET completed = ? WHERE id = ?", (0, activity_id)
             )
         console.print(f"Marked activity {args.index} as incomplete.")
     else:
@@ -237,7 +235,7 @@ def main():
             if args.type:
                 cursor.execute(
                     "SELECT * FROM activities WHERE type = ? ORDER BY RANDOM() LIMIT 1",
-                    (args.type,)
+                    (args.type,),
                 )
             else:
                 cursor.execute("SELECT * FROM activities ORDER BY RANDOM() LIMIT 1")
