@@ -15,10 +15,11 @@ console = Console()
 def parse_activity(activity: str) -> dict:
     """Parse an activity string into a structured dictionary.
 
-    Format: [type] description #tag1 #tag2 --duration 15min
+    Format: [type] description #tag1 #tag2 --duration 15min --completable
     If no type is specified, defaults to 'general'
     Hashtags are extracted as tags
     --duration flag specifies duration
+    --completable flag marks this as a one-off to-do activity
     """
     from im_bored.db import parse_tags_from_description
 
@@ -32,6 +33,12 @@ def parse_activity(activity: str) -> dict:
     else:
         activity_type = "general"
         remaining = activity.strip()
+
+    # Extract completable flag
+    completable = False
+    if "--completable" in remaining:
+        completable = True
+        remaining = remaining.replace("--completable", "").strip()
 
     # Extract duration flag
     duration_match = re.search(r"--duration\s+(\S+)", remaining)
@@ -52,10 +59,11 @@ def parse_activity(activity: str) -> dict:
         "tags": tags,
         "duration": duration,
         "completed": 0,
+        "completable": completable,
     }
 
 
-def create_panel(data, title, width=None):
+def create_panel(data, title, width=None, show_completable=False):
     table = Table(
         show_header=True,
         show_edge=False,
@@ -66,9 +74,8 @@ def create_panel(data, title, width=None):
     )
     table.add_column("ID", justify="right", width=3)
 
-    # Only show "Done" column for "todo" activity type
-    show_done = title == "todo"
-    if show_done:
+    # Only show "Done" column when showing completable activities
+    if show_completable:
         table.add_column("Done", justify="center", width=4)
 
     table.add_column("Description")
@@ -76,6 +83,11 @@ def create_panel(data, title, width=None):
     for ei, entry in data:
         # Build description with tags and duration
         desc = entry["description"]
+
+        # Add checkbox indicator for completable activities (when not showing the Done column)
+        if not show_completable and entry.get("completable"):
+            checkbox = "☐" if not entry["completed"] else "☑"
+            desc = f"{checkbox} {desc}"
 
         # Add tags if present
         if entry.get("tags"):
@@ -86,7 +98,7 @@ def create_panel(data, title, width=None):
         if entry.get("duration"):
             desc = f"{desc} [dim cyan]({entry['duration']})[/dim cyan]"
 
-        if show_done:
+        if show_completable:
             done_mark = "✔" if entry["completed"] else " "
             table.add_row(str(ei), done_mark, desc)
         else:
@@ -219,9 +231,10 @@ def main():
         description = parsed["description"]
         tags = parsed["tags"]
         duration = parsed["duration"]
+        completable = parsed["completable"]
 
         # Add activity with tags
-        activity_id = add_activity_with_tags(activity_type, description, tags, duration)
+        activity_id = add_activity_with_tags(activity_type, description, tags, duration, completable)
 
         # Build output message
         msg = f"Added activity: \\[{activity_type}] {description}"
@@ -230,6 +243,8 @@ def main():
             msg += f" {tag_str}"
         if duration:
             msg += f" ({duration})"
+        if completable:
+            msg += " [completable]"
 
         console.print(msg)
 
@@ -266,14 +281,8 @@ def main():
 
         panels = []
 
-        # Add general first if it exists
-        if "general" in grouped_data:
-            panels.append(create_panel(grouped_data["general"], "general", width=40))
-
-        # Add all other types except 'to-do'
+        # Add all types in sorted order (including general)
         for act_type in sorted(grouped_data.keys()):
-            if act_type in ("general", "todo"):
-                continue
             panels.append(create_panel(grouped_data[act_type], act_type, width=40))
 
         if panels:
@@ -291,7 +300,8 @@ def main():
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM activities ORDER BY id")
+            # Only get incomplete completable activities
+            cursor.execute("SELECT * FROM activities WHERE completed = 0 AND completable = 1 ORDER BY id")
             activities = [dict(row) for row in cursor.fetchall()]
 
         # Fetch tags for each activity
@@ -305,11 +315,18 @@ def main():
             # Use actual database ID instead of enumeration index
             grouped_data[activity["type"]].append((activity["id"], activity))
 
-        if "todo" in grouped_data:
-            panel = create_panel(grouped_data["todo"], "todo")
-            console.print(panel)
+        panels = []
+
+        # Add all types in sorted order (including general)
+        for act_type in sorted(grouped_data.keys()):
+            panels.append(create_panel(grouped_data[act_type], act_type, width=40, show_completable=True))
+
+        if panels:
+            console.print(
+                Columns(panels, equal=True, expand=True, column_first=True, padding=1)
+            )
         else:
-            console.print("No todo items found.")
+            console.print("No incomplete to-do items found.")
         console.print()
 
     elif command == "tag":
@@ -526,13 +543,11 @@ def main():
             session_id=session_id,
         )
 
-        # Mark the activity as completed (this hides todos from the list)
-        update_activity_completion(activity["id"], True)
-
-        # Display confirmation
-        if activity["type"] == "todo":
+        # Only mark as completed if it's a completable activity
+        if activity["completable"]:
+            update_activity_completion(activity["id"], True)
             console.print(
-                f"[green]✓[/green] Completed and removed from list: {activity['description']}"
+                f"[green]✓[/green] Completed and removed from to-do list: [{activity['type']}] {activity['description']}"
             )
         else:
             console.print(

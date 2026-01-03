@@ -28,6 +28,20 @@ Multi-dimensional categorization beyond simple types:
 imbored add "[exercise] Yoga #indoor #calm #solo --duration 30min"
 ```
 
+### ✅ Completable To-Dos
+Mark activities as completable one-off tasks that disappear when logged:
+```bash
+# Add a completable to-do
+imbored add "[chores] Call dentist --completable"
+
+# Log it when done - it disappears from your to-do list
+imbored log 15
+
+# Repeatable activities stay available even after logging
+imbored add "[exercise] Go for a run"
+imbored log 22  # Logged, but still available for next time
+```
+
 ### 📊 Optional Tracking (Stress-Free)
 Log what you've completed *only if you want to*. No prompts, no pressure:
 ```bash
@@ -36,13 +50,6 @@ imbored log 22
 
 # See what you've accomplished
 imbored stats
-```
-
-### ✅ Auto-Completing Todos
-Todo items automatically hide when you log them as complete:
-```bash
-imbored add "[todo] Call dentist"
-imbored log 15  # Marks complete and removes from list
 ```
 
 ## Installation
@@ -80,8 +87,11 @@ imbored --vibe "Quick Win"
 
 ### Adding Activities
 ```bash
-# Simple activity
+# Repeatable activity (default)
 imbored add "[exercise] Go for a run"
+
+# One-off completable to-do
+imbored add "[chores] Schedule dentist --completable"
 
 # With context tags
 imbored add "[exercise] Morning yoga #indoor #calm #solo"
@@ -89,22 +99,26 @@ imbored add "[exercise] Morning yoga #indoor #calm #solo"
 # With duration
 imbored add "[reading] Read current book --duration 1h"
 
-# Full featured
-imbored add "[hobby] Work on chess puzzles #indoor #focus #solo --duration 30min"
+# Everything together
+imbored add "[chores] Buy groceries #quick --duration 30min --completable"
 ```
 
 ### Managing Your Activity List
 ```bash
-# View all activities with their IDs
+# View all activities (grouped by type)
 imbored activities
 
-# View just todos
+# View just incomplete to-dos
 imbored todo
 
-# Mark a todo complete (hides it)
+# Mark a completable activity as done (use 'complete' or 'log')
 imbored complete 15
+imbored log 15  # Same effect for completable activities
 
-# Remove an activity you don't want anymore
+# Mark as incomplete again (brings it back)
+imbored incomplete 15
+
+# Remove an activity permanently
 imbored remove 22
 ```
 
@@ -127,14 +141,15 @@ imbored stats --reset
 
 ### Activities
 Each activity has:
-- **Type**: Primary category (e.g., `exercise`, `chess`, `reading`, `todo`)
+- **Type**: Primary category (e.g., `exercise`, `chores`, `reading`, `hobbies`)
 - **Description**: What to do
 - **Tags** (optional): Context attributes like `#indoor`, `#solo`, `#quick`
 - **Duration** (optional): `5min`, `15min`, `30min`, `1h`, `1h+`
+- **Completable** (optional): Whether it's a one-off task that should disappear when done
 
-**Types:**
-- `todo` - One-off tasks (disappear when completed)
-- Everything else - Repeatable activities
+**Activity Behavior:**
+- **Completable** (`--completable` flag) - One-off tasks that hide when logged/completed
+- **Repeatable** (default) - Activities that remain available even after logging
 
 ### Tags
 Multi-dimensional attributes that describe *how* or *where* you do an activity:
@@ -164,6 +179,10 @@ Pre-configured filter combinations for common moods or contexts:
 # Basic syntax: [type] description
 imbored add "[type] description"
 
+# Add --completable flag for one-off to-dos
+imbored add "[chores] Call dentist --completable"
+imbored add "[work] Submit expense report --completable"
+
 # With tags (automatically creates new tags)
 imbored add "[exercise] Run in park #outdoor #active"
 
@@ -171,7 +190,7 @@ imbored add "[exercise] Run in park #outdoor #active"
 imbored add "[reading] Read fiction --duration 1h"
 
 # Everything together
-imbored add "[hobby] Paint watercolors #indoor #creative #calm --duration 2h"
+imbored add "[chores] Grocery shopping #quick --duration 30min --completable"
 ```
 
 #### Viewing Activities
@@ -179,18 +198,19 @@ imbored add "[hobby] Paint watercolors #indoor #creative #calm --duration 2h"
 # See all activities grouped by type
 imbored activities
 
-# See only todos
+# See only incomplete completable to-dos (with checkboxes)
 imbored todo
 
 # Each activity shows its ID, description, tags, and duration
 ```
 
-#### Updating Activities
+#### Completing & Updating Activities
 ```bash
-# Mark as complete (hides todos)
+# Mark completable activity as done (hides it from to-do list)
 imbored complete <id>
+imbored log <id>  # Same effect for completable activities
 
-# Mark as incomplete (shows todos again)
+# Mark as incomplete (brings it back to to-do list)
 imbored incomplete <id>
 
 # Remove permanently
@@ -210,7 +230,7 @@ imbored tag create energetic
 imbored tag delete energetic
 ```
 
-**Default tags:** `indoor`, `outdoor`, `solo`, `social`, `quick`, `focus`, `cozy`, `active`, `creative`, `learning`, `maintenance`, `fun`
+**Common tags:** `indoor`, `outdoor`, `solo`, `social`, `quick`, `focus`, `cozy`, `active`, `creative`, `learning`, `fun`
 
 ### Vibe Management
 
@@ -258,16 +278,16 @@ Tracking is completely optional. Use it only if it helps you feel accomplished.
 imbored log <id>
 
 # See your activity log
-imbored stats              # Last 30 days
+imbored stats
 imbored stats --days 7     # Last 7 days
 
 # Reset statistics
-imbored stats --reset      # Clears all logged activities
+imbored stats --reset
 ```
 
-**For Todos:** Logging a todo marks it complete and hides it from your list.
-
-**For Regular Activities:** Logging tracks completion but keeps the activity available for future use.
+**Logging Behavior:**
+- **Completable activities**: Logging marks them complete and hides them from to-do list
+- **Repeatable activities**: Logging tracks completion but keeps the activity available
 
 ## Real-World Examples
 
@@ -311,17 +331,17 @@ imbored add "[hobby] Work on chess opening repertoire #indoor #focus #learning -
 imbored --duration 1h+ --tags focus,learning
 ```
 
-### Daily Todos
+### Daily To-Dos
 ```bash
-# Add some todos
-imbored add "[todo] Email tax documents #quick"
-imbored add "[todo] Schedule dentist appointment #quick"
-imbored add "[todo] Research hiking boots"
+# Add some completable to-dos
+imbored add "[chores] Email tax documents #quick --completable"
+imbored add "[chores] Schedule dentist appointment #quick --completable"
+imbored add "[shopping] Research hiking boots --completable"
 
-# View todo list
+# View to-do list (shows only incomplete completable items)
 imbored todo
 
-# Complete one (it disappears)
+# Complete one (it disappears from the list)
 imbored log 42
 ```
 
@@ -336,7 +356,7 @@ imbored --tags active
 
 ### Social Activities
 ```bash
-# Add social activities
+# Add social activities (repeatable, not completable)
 imbored add "[general] Call a friend #social #indoor --duration 30min"
 imbored add "[games] Play board games #social #indoor --duration 2h"
 
@@ -374,8 +394,12 @@ Group activities into types that make sense for you:
 - **Exercise**: running, yoga, weightlifting
 - **Learning**: reading, courses, practice
 - **Social**: calls, games, hangouts
-- **Maintenance**: todos, chores, errands
+- **Chores**: errands, admin tasks, maintenance (often with `--completable`)
 - **Creative**: writing, art, music
+
+### Completable vs Repeatable
+- **Use `--completable` for**: One-time tasks, errands, specific to-dos, things that shouldn't reappear after completion
+- **Don't use `--completable` for**: Regular activities you do repeatedly like exercise, hobbies, social activities
 
 ### Avoid Analysis Paralysis
 The tool is designed to *reduce* decision fatigue, not create it:

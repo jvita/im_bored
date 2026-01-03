@@ -169,12 +169,13 @@ def get_all_types():
     return types
 
 
-def add_activity(activity_type: str, description: str):
+def add_activity(activity_type: str, description: str, completable: bool = False):
     """Add a new activity to the database.
 
     Args:
         activity_type: The type/category of the activity
         description: The activity description
+        completable: Whether this is a completable one-off activity (default: False)
 
     Returns:
         int: The ID of the newly created activity
@@ -182,8 +183,8 @@ def add_activity(activity_type: str, description: str):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO activities (type, description, completed) VALUES (?, ?, ?)",
-            (activity_type, description, 0)
+            "INSERT INTO activities (type, description, completed, completable) VALUES (?, ?, ?, ?)",
+            (activity_type, description, 0, 1 if completable else 0)
         )
         return cursor.lastrowid
 
@@ -363,8 +364,8 @@ def parse_tags_from_description(description: str):
     """
     import re
 
-    # Find all hashtags
-    tag_pattern = r'#(\w+)'
+    # Find all hashtags (including hyphens)
+    tag_pattern = r'#([\w-]+)'
     tags = re.findall(tag_pattern, description)
 
     # Remove hashtags from description
@@ -375,7 +376,7 @@ def parse_tags_from_description(description: str):
     return clean_description, tags
 
 
-def add_activity_with_tags(activity_type: str, description: str, tag_names: list[str], duration: str | None = None):
+def add_activity_with_tags(activity_type: str, description: str, tag_names: list[str], duration: str | None = None, completable: bool = False):
     """Add a new activity with tags in a single transaction.
 
     Args:
@@ -383,6 +384,7 @@ def add_activity_with_tags(activity_type: str, description: str, tag_names: list
         description: The activity description
         tag_names: List of tag names (will be created if they don't exist)
         duration: Optional duration ('5min', '15min', '30min', '1h', '1h+')
+        completable: Whether this is a completable one-off activity (default: False)
 
     Returns:
         int: The ID of the newly created activity
@@ -392,8 +394,8 @@ def add_activity_with_tags(activity_type: str, description: str, tag_names: list
 
         # Insert activity
         cursor.execute(
-            "INSERT INTO activities (type, description, completed, duration) VALUES (?, ?, ?, ?)",
-            (activity_type, description, 0, duration)
+            "INSERT INTO activities (type, description, completed, duration, completable) VALUES (?, ?, ?, ?, ?)",
+            (activity_type, description, 0, duration, 1 if completable else 0)
         )
         activity_id = cursor.lastrowid
 
