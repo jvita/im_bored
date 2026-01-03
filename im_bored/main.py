@@ -124,19 +124,19 @@ def main():
         "complete", help="Mark an activity as complete"
     )
     complete_parser.add_argument(
-        "index", type=int, help="The index of the activity to complete"
+        "index", type=int, help="The ID of the activity to complete"
     )
 
     incomplete_parser = subparser.add_parser(
         "incomplete", help="Mark an activity as incomplete"
     )
     incomplete_parser.add_argument(
-        "index", type=int, help="The index of the activity to mark as incomplete"
+        "index", type=int, help="The ID of the activity to mark as incomplete"
     )
 
     remove_parser = subparser.add_parser("remove", help="Remove an activity")
     remove_parser.add_argument(
-        "index", type=int, help="The index of the activity to remove"
+        "index", type=int, help="The ID of the activity to remove"
     )
 
     subparser.add_parser("activities", help="List all activities (excluding to-do)")
@@ -180,6 +180,17 @@ def main():
     stats_parser.add_argument(
         "--days", type=int, default=30, help="Number of days to analyze (default: 30)"
     )
+    stats_parser.add_argument(
+        "--reset", action="store_true", help="Reset all statistics (clear decision events)"
+    )
+
+    # Log command - manually log an activity as completed
+    log_parser = subparser.add_parser("log", help="Manually log an activity (for activities completed outside the app)")
+    log_parser.add_argument("activity_id", type=int, help="Activity ID to log")
+    log_parser.add_argument(
+        "--outcome", type=str, default="completed", choices=["completed", "skipped", "ignored"],
+        help="Outcome to log (default: completed)"
+    )
 
     args = parser.parse_args()
 
@@ -215,17 +226,15 @@ def main():
         console.print(msg)
 
     elif command == "remove":
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT id FROM activities ORDER BY id")
-            activities = cursor.fetchall()
+        from im_bored.db import delete_activity, get_activity_by_id
 
-            if args.index < 0 or args.index >= len(activities):
-                console.print("Invalid index.")
-                return
+        activity = get_activity_by_id(args.index)
+        if not activity:
+            console.print(f"✗ Activity ID {args.index} not found")
+            return
 
-            activity_id = activities[args.index]["id"]
-            cursor.execute("DELETE FROM activities WHERE id = ?", (activity_id,))
+        delete_activity(args.index)
+        console.print(f"✓ Removed activity {args.index}: {activity['description']}")
     elif command == "activities":
         from im_bored.db import get_tags_for_activity
 
@@ -241,10 +250,11 @@ def main():
             activity['tags'] = get_tags_for_activity(activity['id'])
 
         grouped_data = {}
-        for ei, activity in enumerate(activities):
+        for activity in activities:
             if activity["type"] not in grouped_data:
                 grouped_data[activity["type"]] = []
-            grouped_data[activity["type"]].append((ei, activity))
+            # Use actual database ID instead of enumeration index
+            grouped_data[activity["type"]].append((activity['id'], activity))
 
         panels = []
 
@@ -281,10 +291,11 @@ def main():
             activity['tags'] = get_tags_for_activity(activity['id'])
 
         grouped_data = {}
-        for ei, activity in enumerate(activities):
+        for activity in activities:
             if activity["type"] not in grouped_data:
                 grouped_data[activity["type"]] = []
-            grouped_data[activity["type"]].append((ei, activity))
+            # Use actual database ID instead of enumeration index
+            grouped_data[activity["type"]].append((activity['id'], activity))
 
         if "todo" in grouped_data:
             panel = create_panel(grouped_data["todo"], "todo")
@@ -462,8 +473,59 @@ def main():
             else:
                 console.print(f"✗ Vibe not found: {args.name}")
 
+    elif command == "log":
+        from im_bored.db import get_activity_by_id, log_decision_event, update_activity_completion
+        import uuid
+
+        # Get the activity
+        activity = get_activity_by_id(args.activity_id)
+        if not activity:
+            console.print(f"✗ Activity ID {args.activity_id} not found")
+            return
+
+        # Map outcome strings to uppercase
+        outcome_map = {
+            'completed': 'COMPLETED',
+            'skipped': 'SKIPPED',
+            'ignored': 'IGNORED'
+        }
+        outcome = outcome_map[args.outcome]
+
+        # Log the decision event
+        session_id = str(uuid.uuid4())
+        log_decision_event(
+            activity_id=activity['id'],
+            outcome=outcome,
+            vibe_id=None,  # No vibe for manual logs
+            filter_tags=None,
+            session_id=session_id
+        )
+
+        # If completed, also mark the activity as completed
+        if outcome == 'COMPLETED':
+            update_activity_completion(activity['id'], True)
+
+        # Display confirmation
+        outcome_icons = {
+            'COMPLETED': '[green]✓[/green]',
+            'SKIPPED': '[yellow]→[/yellow]',
+            'IGNORED': '[dim]✕[/dim]'
+        }
+        icon = outcome_icons.get(outcome, '')
+        console.print(f"{icon} Logged [{activity['type']}] {activity['description']} as {args.outcome}")
+
     elif command == "stats":
-        from im_bored.db import get_decision_stats
+        from im_bored.db import get_decision_stats, clear_all_decision_events
+
+        # Handle reset flag
+        if args.reset:
+            from rich.prompt import Confirm
+            if Confirm.ask("[yellow]Are you sure you want to clear ALL statistics? This cannot be undone.[/yellow]"):
+                count = clear_all_decision_events()
+                console.print(f"[green]✓ Cleared {count} decision events[/green]")
+            else:
+                console.print("Cancelled.")
+            return
 
         stats = get_decision_stats(days=args.days)
 
@@ -532,35 +594,26 @@ def main():
         console.print()
 
     elif args.command == "complete":
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT id FROM activities ORDER BY id")
-            activities = cursor.fetchall()
+        from im_bored.db import update_activity_completion, get_activity_by_id
 
-            if args.index < 0 or args.index >= len(activities):
-                console.print("Invalid index.")
-                return
+        activity = get_activity_by_id(args.index)
+        if not activity:
+            console.print(f"✗ Activity ID {args.index} not found")
+            return
 
-            activity_id = activities[args.index]["id"]
-            cursor.execute(
-                "UPDATE activities SET completed = ? WHERE id = ?", (1, activity_id)
-            )
-        console.print(f"Marked activity {args.index} as complete.")
+        update_activity_completion(args.index, True)
+        console.print(f"✓ Marked activity {args.index} as complete: {activity['description']}")
+
     elif args.command == "incomplete":
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT id FROM activities ORDER BY id")
-            activities = cursor.fetchall()
+        from im_bored.db import update_activity_completion, get_activity_by_id
 
-            if args.index < 0 or args.index >= len(activities):
-                console.print("Invalid index.")
-                return
+        activity = get_activity_by_id(args.index)
+        if not activity:
+            console.print(f"✗ Activity ID {args.index} not found")
+            return
 
-            activity_id = activities[args.index]["id"]
-            cursor.execute(
-                "UPDATE activities SET completed = ? WHERE id = ?", (0, activity_id)
-            )
-        console.print(f"Marked activity {args.index} as incomplete.")
+        update_activity_completion(args.index, False)
+        console.print(f"Marked activity {args.index} as incomplete: {activity['description']}")
     else:
         # Default imbored command - pick a random activity with filtering
         from im_bored.db import get_random_uncompleted_activity_filtered, get_tag_by_name, get_vibe_by_name

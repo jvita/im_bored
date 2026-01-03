@@ -771,3 +771,33 @@ def get_activity_decision_history(activity_id: int, limit: int = 10):
             LIMIT ?
         """, (activity_id, limit))
         return [dict(row) for row in cursor.fetchall()]
+
+
+def clear_all_decision_events():
+    """Clear all decision events (reset statistics).
+
+    Returns:
+        int: Number of events deleted
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM decision_events")
+        count = cursor.fetchone()[0]
+        cursor.execute("DELETE FROM decision_events")
+        return count
+
+
+def get_activity_by_id(activity_id: int):
+    """Get an activity by its ID.
+
+    Args:
+        activity_id: The ID of the activity
+
+    Returns:
+        dict | None: Activity data or None if not found
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM activities WHERE id = ?", (activity_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
