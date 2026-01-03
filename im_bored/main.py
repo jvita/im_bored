@@ -185,12 +185,8 @@ def main():
     )
 
     # Log command - manually log an activity as completed
-    log_parser = subparser.add_parser("log", help="Manually log an activity (for activities completed outside the app)")
-    log_parser.add_argument("activity_id", type=int, help="Activity ID to log")
-    log_parser.add_argument(
-        "--outcome", type=str, default="completed", choices=["completed", "skipped", "ignored"],
-        help="Outcome to log (default: completed)"
-    )
+    log_parser = subparser.add_parser("log", help="Log an activity as completed (marks todos as done and hides them)")
+    log_parser.add_argument("activity_id", type=int, help="Activity ID to log as completed")
 
     args = parser.parse_args()
 
@@ -483,36 +479,24 @@ def main():
             console.print(f"✗ Activity ID {args.activity_id} not found")
             return
 
-        # Map outcome strings to uppercase
-        outcome_map = {
-            'completed': 'COMPLETED',
-            'skipped': 'SKIPPED',
-            'ignored': 'IGNORED'
-        }
-        outcome = outcome_map[args.outcome]
-
         # Log the decision event
         session_id = str(uuid.uuid4())
         log_decision_event(
             activity_id=activity['id'],
-            outcome=outcome,
+            outcome='COMPLETED',  # Only log completed activities
             vibe_id=None,  # No vibe for manual logs
             filter_tags=None,
             session_id=session_id
         )
 
-        # If completed, also mark the activity as completed
-        if outcome == 'COMPLETED':
-            update_activity_completion(activity['id'], True)
+        # Mark the activity as completed (this hides todos from the list)
+        update_activity_completion(activity['id'], True)
 
         # Display confirmation
-        outcome_icons = {
-            'COMPLETED': '[green]✓[/green]',
-            'SKIPPED': '[yellow]→[/yellow]',
-            'IGNORED': '[dim]✕[/dim]'
-        }
-        icon = outcome_icons.get(outcome, '')
-        console.print(f"{icon} Logged [{activity['type']}] {activity['description']} as {args.outcome}")
+        if activity['type'] == 'todo':
+            console.print(f"[green]✓[/green] Completed and removed from list: {activity['description']}")
+        else:
+            console.print(f"[green]✓[/green] Logged [{activity['type']}] {activity['description']} as completed")
 
     elif command == "stats":
         from im_bored.db import get_decision_stats, clear_all_decision_events
@@ -529,69 +513,31 @@ def main():
 
         stats = get_decision_stats(days=args.days)
 
-        console.print(f"\n[bold cyan]Analytics (Last {stats['days']} days)[/bold cyan]\n")
+        console.print(f"\n[bold cyan]Activity Log (Last {stats['days']} days)[/bold cyan]\n")
 
-        # Overall metrics
-        metrics_table = Table(show_header=False, box=None, padding=(0, 2))
-        metrics_table.add_column("Metric", style="bold")
-        metrics_table.add_column("Value", justify="right")
+        # Overall metrics - simplified to just show completed count
+        if stats['completed_count'] > 0:
+            console.print(f"[green]✓ {stats['completed_count']} activities completed[/green]\n")
 
-        metrics_table.add_row("Total Rolls", str(stats['total_rolls']))
-        metrics_table.add_row("Completed", f"[green]{stats['completed_count']}[/green]")
-        metrics_table.add_row("Skipped", f"[yellow]{stats['skipped_count']}[/yellow]")
-        metrics_table.add_row("Ignored", f"[dim]{stats['ignored_count']}[/dim]")
-        metrics_table.add_row("Completion Rate", f"{stats['completion_rate']:.1f}%")
-        metrics_table.add_row("Skip Rate", f"{stats['skip_rate']:.1f}%")
+            # Most completed activities
+            if stats['most_completed']:
+                console.print("[bold green]Recently Completed:[/bold green]")
+                completed_table = Table(show_header=True, box=None, header_style="green")
+                completed_table.add_column("Activity", style="bold")
+                completed_table.add_column("Type", style="dim")
+                completed_table.add_column("Count", justify="right")
 
-        console.print(Panel(metrics_table, title="Overview", border_style="cyan"))
+                for activity in stats['most_completed']:
+                    completed_table.add_row(
+                        activity['description'],
+                        f"[{activity['type']}]",
+                        str(activity['count'])
+                    )
 
-        # Most completed activities
-        if stats['most_completed']:
-            console.print("\n[bold green]Most Completed Activities:[/bold green]")
-            completed_table = Table(show_header=True, box=None, header_style="green")
-            completed_table.add_column("Activity", style="bold")
-            completed_table.add_column("Type", style="dim")
-            completed_table.add_column("Count", justify="right")
-
-            for activity in stats['most_completed']:
-                completed_table.add_row(
-                    activity['description'],
-                    f"[{activity['type']}]",
-                    str(activity['count'])
-                )
-
-            console.print(completed_table)
-
-        # Most skipped activities
-        if stats['most_skipped']:
-            console.print("\n[bold yellow]Most Skipped Activities:[/bold yellow]")
-            skipped_table = Table(show_header=True, box=None, header_style="yellow")
-            skipped_table.add_column("Activity", style="bold")
-            skipped_table.add_column("Type", style="dim")
-            skipped_table.add_column("Count", justify="right")
-
-            for activity in stats['most_skipped']:
-                skipped_table.add_row(
-                    activity['description'],
-                    f"[{activity['type']}]",
-                    str(activity['count'])
-                )
-
-            console.print(skipped_table)
-
-        # Vibe usage
-        if stats['vibe_usage']:
-            console.print("\n[bold magenta]Vibe Usage:[/bold magenta]")
-            vibe_table = Table(show_header=True, box=None, header_style="magenta")
-            vibe_table.add_column("Vibe", style="bold")
-            vibe_table.add_column("Uses", justify="right")
-
-            for vibe_name, count in stats['vibe_usage'].items():
-                vibe_table.add_row(vibe_name, str(count))
-
-            console.print(vibe_table)
-
-        console.print()
+                console.print(completed_table)
+                console.print()
+        else:
+            console.print("[dim]No activities logged yet. Use 'imbored log <id>' to track completed activities.[/dim]\n")
 
     elif args.command == "complete":
         from im_bored.db import update_activity_completion, get_activity_by_id
@@ -667,49 +613,6 @@ def main():
             console.print()
             console.print(panel)
             console.print()
-
-            # Prompt for outcome
-            from im_bored.db import log_decision_event, update_activity_completion
-            import uuid
-
-            console.print("[dim]Mark as: [c]ompleted, [s]kipped, [i]gnored, or [Enter] to skip[/dim]")
-            outcome_input = input("Outcome: ").strip().lower()
-
-            if outcome_input:
-                # Generate session ID (could be persisted across CLI invocations for session tracking)
-                session_id = str(uuid.uuid4())
-
-                if outcome_input == 'c':
-                    # Mark as completed
-                    log_decision_event(
-                        activity_id=choice['id'],
-                        outcome='COMPLETED',
-                        vibe_id=vibe_id,
-                        filter_tags=tag_ids,
-                        session_id=session_id
-                    )
-                    update_activity_completion(choice['id'], True)
-                    console.print("[green]✓ Marked as completed![/green]")
-                elif outcome_input == 's':
-                    # Log as skipped
-                    log_decision_event(
-                        activity_id=choice['id'],
-                        outcome='SKIPPED',
-                        vibe_id=vibe_id,
-                        filter_tags=tag_ids,
-                        session_id=session_id
-                    )
-                    console.print("[yellow]→ Marked as skipped[/yellow]")
-                elif outcome_input == 'i':
-                    # Log as ignored
-                    log_decision_event(
-                        activity_id=choice['id'],
-                        outcome='IGNORED',
-                        vibe_id=vibe_id,
-                        filter_tags=tag_ids,
-                        session_id=session_id
-                    )
-                    console.print("[dim]✕ Marked as ignored[/dim]")
         else:
             # Build filter message
             filters = []
