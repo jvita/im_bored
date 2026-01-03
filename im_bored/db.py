@@ -653,11 +653,11 @@ def log_decision_event(
         return cursor.lastrowid
 
 
-def get_decision_stats(days: int = 30):
-    """Get analytics statistics for the last N days.
+def get_decision_stats(days: int | None = None):
+    """Get analytics statistics for the last N days, or all time if days is None.
 
     Args:
-        days: Number of days to analyze (default: 30)
+        days: Number of days to analyze, or None for all time (default: None)
 
     Returns:
         dict: Statistics including:
@@ -674,25 +674,31 @@ def get_decision_stats(days: int = 30):
     with get_db_connection() as conn:
         cursor = conn.cursor()
 
-        # Calculate date threshold
-        cursor.execute("""
-            SELECT datetime('now', '-' || ? || ' days')
-        """, (days,))
-        since_date = cursor.fetchone()[0]
+        # Calculate date threshold if days is specified
+        if days is not None:
+            cursor.execute("""
+                SELECT datetime('now', '-' || ? || ' days')
+            """, (days,))
+            since_date = cursor.fetchone()[0]
+            where_clause = "WHERE created_at >= ?"
+            params = (since_date,)
+        else:
+            where_clause = ""
+            params = ()
 
         # Total rolls
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COUNT(*) FROM decision_events
-            WHERE created_at >= ?
-        """, (since_date,))
+            {where_clause}
+        """, params)
         total_rolls = cursor.fetchone()[0]
 
         # Outcome counts
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT outcome, COUNT(*) FROM decision_events
-            WHERE created_at >= ?
+            {where_clause}
             GROUP BY outcome
-        """, (since_date,))
+        """, params)
         outcome_counts = {row[0]: row[1] for row in cursor.fetchall()}
 
         completed_count = outcome_counts.get('COMPLETED', 0)
@@ -704,38 +710,49 @@ def get_decision_stats(days: int = 30):
         skip_rate = (skipped_count / total_rolls * 100) if total_rolls > 0 else 0
 
         # Most completed activities
-        cursor.execute("""
+        if days is not None:
+            completed_where = "WHERE de.created_at >= ? AND de.outcome = 'COMPLETED'"
+            skipped_where = "WHERE de.created_at >= ? AND de.outcome = 'SKIPPED'"
+            vibe_where = "WHERE de.created_at >= ? AND de.vibe_id IS NOT NULL"
+            query_params = (since_date,)
+        else:
+            completed_where = "WHERE de.outcome = 'COMPLETED'"
+            skipped_where = "WHERE de.outcome = 'SKIPPED'"
+            vibe_where = "WHERE de.vibe_id IS NOT NULL"
+            query_params = ()
+
+        cursor.execute(f"""
             SELECT a.id, a.description, a.type, COUNT(*) as count
             FROM decision_events de
             JOIN activities a ON de.activity_id = a.id
-            WHERE de.created_at >= ? AND de.outcome = 'COMPLETED'
+            {completed_where}
             GROUP BY a.id
             ORDER BY count DESC
             LIMIT 5
-        """, (since_date,))
+        """, query_params)
         most_completed = [dict(row) for row in cursor.fetchall()]
 
         # Most skipped activities
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT a.id, a.description, a.type, COUNT(*) as count
             FROM decision_events de
             JOIN activities a ON de.activity_id = a.id
-            WHERE de.created_at >= ? AND de.outcome = 'SKIPPED'
+            {skipped_where}
             GROUP BY a.id
             ORDER BY count DESC
             LIMIT 5
-        """, (since_date,))
+        """, query_params)
         most_skipped = [dict(row) for row in cursor.fetchall()]
 
         # Vibe usage
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT v.name, COUNT(*) as count
             FROM decision_events de
             JOIN vibes v ON de.vibe_id = v.id
-            WHERE de.created_at >= ? AND de.vibe_id IS NOT NULL
+            {vibe_where}
             GROUP BY v.id
             ORDER BY count DESC
-        """, (since_date,))
+        """, query_params)
         vibe_usage = {row[0]: row[1] for row in cursor.fetchall()}
 
         return {
