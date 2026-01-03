@@ -1,9 +1,6 @@
 # I'm Bored
 
-A CLI tool to help you decide what to do when you're bored. Overcome decision fatigue with smart filtering by mood, context, time available, and more.
-
-## The general idea
-You know best what you like to do. But sometimes you forget, or could use a little additional inspiration. This program allows you to record ideas for activities that you could do when you're bored, then returns those ideas back to you at the click of a button.
+You know best what you like to do. But sometimes you forget, or could use a little additional inspiration. This is a tool to help you decide what to do when you're bored. Overcome decision fatigue with smart filtering by mood, context, time available, and more.
 
 ## Core functionality
 
