@@ -74,10 +74,6 @@ def create_panel(data, title, width=None, show_completable=False):
     )
     table.add_column("ID", justify="right", width=3)
 
-    # Only show "Done" column when showing completable activities
-    if show_completable:
-        table.add_column("Done", justify="center", width=4)
-
     table.add_column("Description")
 
     for ei, entry in data:
@@ -98,11 +94,7 @@ def create_panel(data, title, width=None, show_completable=False):
         if entry.get("duration"):
             desc = f"{desc} [dim cyan]({entry['duration']})[/dim cyan]"
 
-        if show_completable:
-            done_mark = "✔" if entry["completed"] else " "
-            table.add_row(str(ei), done_mark, desc)
-        else:
-            table.add_row(str(ei), desc)
+        table.add_row(str(ei), desc)
 
     return Panel(
         table,
@@ -155,9 +147,28 @@ def main():
         "index", type=int, help="The ID of the activity to remove"
     )
 
-    subparser.add_parser("activities", help="List all activities (excluding to-do)")
+    activities_parser = subparser.add_parser(
+        "activities", help="List all activities (excluding to-do)"
+    )
+    activities_parser.add_argument(
+        "--type", type=str, nargs="+", help="Filter by activity types"
+    )
+    activities_parser.add_argument("--tags", type=str, nargs="+", help="Filter by tags")
+    activities_parser.add_argument(
+        "--duration", type=str, nargs="+", help="Filter by duration"
+    )
+    activities_parser.add_argument(
+        "--completed", action="store_true", help="Show only completed activities"
+    )
 
-    subparser.add_parser("todo", help="Show the to-do list")
+    todo_parser = subparser.add_parser("todo", help="Show the to-do list")
+    todo_parser.add_argument(
+        "--type", type=str, nargs="+", help="Filter by activity types"
+    )
+    todo_parser.add_argument("--tags", type=str, nargs="+", help="Filter by tags")
+    todo_parser.add_argument(
+        "--duration", type=str, nargs="+", help="Filter by duration"
+    )
 
     # Tag management commands
     tag_parser = subparser.add_parser("tag", help="Manage tags")
@@ -234,7 +245,9 @@ def main():
         completable = parsed["completable"]
 
         # Add activity with tags
-        activity_id = add_activity_with_tags(activity_type, description, tags, duration, completable)
+        activity_id = add_activity_with_tags(
+            activity_type, description, tags, duration, completable
+        )
 
         # Build output message
         msg = f"Added activity: \\[{activity_type}] {description}"
@@ -272,6 +285,28 @@ def main():
         for activity in activities:
             activity["tags"] = get_tags_for_activity(activity["id"])
 
+        # Filter by completion status if specified
+        if args.completed:
+            activities = [a for a in activities if a["completed"] == 1]
+
+        # Filter by types if specified
+        if args.type:
+            activities = [a for a in activities if a["type"] in args.type]
+
+        # Filter by tags if specified
+        if args.tags:
+            # Convert tag names to lowercase for case-insensitive comparison
+            filter_tag_names = [tag.lower() for tag in args.tags]
+            activities = [
+                a
+                for a in activities
+                if any(tag["name"].lower() in filter_tag_names for tag in a["tags"])
+            ]
+
+        # Filter by duration if specified
+        if args.duration:
+            activities = [a for a in activities if a.get("duration") in args.duration]
+
         grouped_data = {}
         for activity in activities:
             if activity["type"] not in grouped_data:
@@ -301,12 +336,32 @@ def main():
         with get_db_connection() as conn:
             cursor = conn.cursor()
             # Only get incomplete completable activities
-            cursor.execute("SELECT * FROM activities WHERE completed = 0 AND completable = 1 ORDER BY id")
+            cursor.execute(
+                "SELECT * FROM activities WHERE completed = 0 AND completable = 1 ORDER BY id"
+            )
             activities = [dict(row) for row in cursor.fetchall()]
 
         # Fetch tags for each activity
         for activity in activities:
             activity["tags"] = get_tags_for_activity(activity["id"])
+
+        # Filter by types if specified
+        if args.type:
+            activities = [a for a in activities if a["type"] in args.type]
+
+        # Filter by tags if specified
+        if args.tags:
+            # Convert tag names to lowercase for case-insensitive comparison
+            filter_tag_names = [tag.lower() for tag in args.tags]
+            activities = [
+                a
+                for a in activities
+                if any(tag["name"].lower() in filter_tag_names for tag in a["tags"])
+            ]
+
+        # Filter by duration if specified
+        if args.duration:
+            activities = [a for a in activities if a.get("duration") in args.duration]
 
         grouped_data = {}
         for activity in activities:
@@ -319,7 +374,11 @@ def main():
 
         # Add all types in sorted order (including general)
         for act_type in sorted(grouped_data.keys()):
-            panels.append(create_panel(grouped_data[act_type], act_type, width=40, show_completable=True))
+            panels.append(
+                create_panel(
+                    grouped_data[act_type], act_type, width=40, show_completable=True
+                )
+            )
 
         if panels:
             console.print(

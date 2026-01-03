@@ -483,7 +483,7 @@ def get_vibe_by_id(vibe_id: int):
 
 
 def get_vibe_by_name(name: str):
-    """Get a vibe by its name with associated tags.
+    """Get a vibe by its name with associated tags (case-insensitive).
 
     Args:
         name: The vibe name to search for
@@ -493,7 +493,7 @@ def get_vibe_by_name(name: str):
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM vibes WHERE name = ?", (name,))
+        cursor.execute("SELECT * FROM vibes WHERE LOWER(name) = LOWER(?)", (name,))
         row = cursor.fetchone()
 
         if not row:
