@@ -586,3 +586,5 @@ FodyWeavers.xsd
 
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudio,venv
 
+# Project-specific
+data/activities.db
