@@ -170,6 +170,9 @@ def main():
         "--duration", type=str, nargs="+", help="Filter by duration"
     )
 
+    # Categories command
+    subparser.add_parser("categories", help="List all activity categories")
+
     # Tag management commands
     tag_parser = subparser.add_parser("tag", help="Manage tags")
     tag_subparser = tag_parser.add_subparsers(dest="tag_command")
@@ -387,6 +390,18 @@ def main():
         else:
             console.print("No incomplete to-do items found.")
         console.print()
+
+    elif command == "categories":
+        from im_bored.db import get_all_types
+
+        categories = get_all_types()
+        if categories:
+            console.print("\n[bold cyan]Available Categories:[/bold cyan]")
+            for category in categories:
+                console.print(f"  \\[{category}]")
+            console.print()
+        else:
+            console.print("No categories found.")
 
     elif command == "tag":
         from im_bored.db import get_all_tags, create_tag, get_tag_by_name, delete_tag
