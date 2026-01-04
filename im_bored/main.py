@@ -96,6 +96,25 @@ def parse_activity(activity: str) -> dict:
     }
 
 
+def format_recurrence_days(days: int) -> str:
+    """Format recurrence days into a human-readable string.
+
+    Args:
+        days: Number of days
+
+    Returns:
+        str: Formatted string like "every 7d", "every 2w", "every 1m"
+    """
+    if days % 30 == 0 and days >= 30:
+        months = days // 30
+        return f"every {months}m"
+    elif days % 7 == 0 and days >= 7:
+        weeks = days // 7
+        return f"every {weeks}w"
+    else:
+        return f"every {days}d"
+
+
 def create_panel(data, title, width=None, show_completable=False):
     from datetime import datetime
 
@@ -143,6 +162,11 @@ def create_panel(data, title, width=None, show_completable=False):
         # Add duration if present
         if entry.get("duration"):
             desc = f"{desc} [dim cyan]({entry['duration']})[/dim cyan]"
+
+        # Add recurrence frequency if present
+        if entry.get("recurrence_days"):
+            recurrence_str = format_recurrence_days(entry["recurrence_days"])
+            desc = f"{desc} [dim]({recurrence_str})[/dim]"
 
         # Add due date if present
         if entry.get("due_date"):
