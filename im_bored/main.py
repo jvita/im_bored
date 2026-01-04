@@ -80,8 +80,8 @@ def create_panel(data, title, width=None, show_completable=False):
         # Build description with tags and duration
         desc = entry["description"]
 
-        # Add checkbox indicator for completable activities (when not showing the Done column)
-        if not show_completable and entry.get("completable"):
+        # Add checkbox indicator for completable activities
+        if show_completable and entry.get("completable"):
             checkbox = "☐" if not entry["completed"] else "☑"
             desc = f"{checkbox} {desc}"
 
@@ -321,7 +321,11 @@ def main():
 
         # Add all types in sorted order (including general)
         for act_type in sorted(grouped_data.keys()):
-            panels.append(create_panel(grouped_data[act_type], act_type, width=40))
+            panels.append(
+                create_panel(
+                    grouped_data[act_type], act_type, width=40, show_completable=True
+                )
+            )
 
         if panels:
             console.print(
