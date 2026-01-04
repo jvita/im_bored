@@ -128,10 +128,10 @@ def create_panel(data, title, width=None, show_completable=False):
         if show_completable and entry.get("completable"):
             if entry.get("recurrence_days"):
                 # Recurring task - use ⟳ symbol
-                checkbox = "☑" if entry["completed"] else "⟳"
+                checkbox = "✓" if entry["completed"] else "⟳"
             else:
                 # Regular completable or scheduled task
-                checkbox = "☑" if entry["completed"] else "☐"
+                checkbox = "✓" if entry["completed"] else "☐"
             desc = f"{checkbox} {desc}"
 
         # Add tags if present
@@ -291,6 +291,25 @@ def main():
         help="Reset all statistics (clear decision events)",
     )
 
+    # Random command - pick a random activity with filtering
+    random_parser = subparser.add_parser("random", help="Pick a random activity")
+    random_parser.add_argument(
+        "--type", type=str, help="Filter activities by type"
+    )
+    random_parser.add_argument(
+        "--duration",
+        type=str,
+        help="Filter activities by duration",
+    )
+    random_parser.add_argument(
+        "--tags",
+        type=str,
+        help="Filter activities by tags (comma-separated)",
+    )
+    random_parser.add_argument(
+        "--vibe", type=str, help="Filter activities by vibe"
+    )
+
     # Log command - manually log an activity as completed
     log_parser = subparser.add_parser(
         "log", help="Log an activity as completed (marks todos as done and hides them)"
@@ -377,6 +396,12 @@ def main():
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM activities ORDER BY id")
             activities = [dict(row) for row in cursor.fetchall()]
+
+        # Filter out completed one-off completable activities
+        activities = [
+            a for a in activities
+            if not (a.get("completable") and a["completed"] and not a.get("recurrence_days"))
+        ]
 
         # Fetch tags for each activity
         for activity in activities:
@@ -803,8 +828,9 @@ def main():
         console.print(
             f"Marked activity {args.index} as incomplete: {activity['description']}"
         )
-    else:
-        # Default imbored command - pick a random activity with filtering
+
+    elif command == "random":
+        # Random command - pick a random activity with filtering
         from im_bored.db import (
             get_random_uncompleted_activity_filtered,
             get_tag_by_name,
@@ -876,3 +902,88 @@ def main():
             console.print(
                 f"No uncompleted activities found{filter_msg}. Add some with 'imbored add \"[type] activity\"'"
             )
+
+    else:
+        # Default imbored command - list all activities (excluding to-do)
+        from im_bored.db import get_tags_for_activity
+
+        console.print("")
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM activities ORDER BY id")
+            activities = [dict(row) for row in cursor.fetchall()]
+
+        # Filter out completed one-off completable activities
+        activities = [
+            a for a in activities
+            if not (a.get("completable") and a["completed"] and not a.get("recurrence_days"))
+        ]
+
+        # Fetch tags for each activity
+        for activity in activities:
+            activity["tags"] = get_tags_for_activity(activity["id"])
+
+        # Filter by types if specified
+        if args.type:
+            activities = [a for a in activities if a["type"] == args.type]
+
+        # Parse tag names to list for filtering
+        filter_tags = None
+        if args.tags:
+            filter_tags = [t.strip() for t in args.tags.split(",")]
+
+        # Filter by tags if specified
+        if filter_tags:
+            # Convert tag names to lowercase for case-insensitive comparison
+            filter_tag_names = [tag.lower() for tag in filter_tags]
+            activities = [
+                a
+                for a in activities
+                if any(tag["name"].lower() in filter_tag_names for tag in a["tags"])
+            ]
+
+        # Filter by duration if specified
+        if args.duration:
+            activities = [a for a in activities if a.get("duration") == args.duration]
+
+        # Parse vibe and apply its tag filter
+        if args.vibe:
+            from im_bored.db import get_vibe_by_name
+
+            vibe = get_vibe_by_name(args.vibe)
+            if vibe:
+                console.print(f"[dim cyan]Applying vibe: {args.vibe}[/dim cyan]\n")
+                vibe_tag_names = [tag["name"].lower() for tag in vibe["tags"]]
+                activities = [
+                    a
+                    for a in activities
+                    if any(tag["name"].lower() in vibe_tag_names for tag in a["tags"])
+                ]
+            else:
+                console.print(f"[yellow]Warning: Vibe '{args.vibe}' not found[/yellow]\n")
+
+        grouped_data = {}
+        for activity in activities:
+            if activity["type"] not in grouped_data:
+                grouped_data[activity["type"]] = []
+            # Use actual database ID instead of enumeration index
+            grouped_data[activity["type"]].append((activity["id"], activity))
+
+        panels = []
+
+        # Add all types in sorted order (including general)
+        for act_type in sorted(grouped_data.keys()):
+            panels.append(
+                create_panel(
+                    grouped_data[act_type], act_type, width=40, show_completable=True
+                )
+            )
+
+        if panels:
+            console.print(
+                Columns(panels, equal=True, expand=True, column_first=True, padding=1)
+            )
+        else:
+            console.print("No activities found.")
+        console.print()
