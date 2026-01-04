@@ -15,13 +15,15 @@ console = Console()
 def parse_activity(activity: str) -> dict:
     """Parse an activity string into a structured dictionary.
 
-    Format: [type] description #tag1 #tag2 --duration 15min --completable
+    Format: [type] description #tag1 #tag2 --duration 15min --completable --recurring 2weeks --due 2026-01-15
     If no type is specified, defaults to 'general'
     Hashtags are extracted as tags
     --duration flag specifies duration
     --completable flag marks this as a one-off to-do activity
+    --recurring flag specifies recurrence period (requires --completable)
+    --due flag specifies due date (requires --completable)
     """
-    from im_bored.db import parse_tags_from_description
+    from im_bored.db import parse_tags_from_description, parse_recurrence_to_days
 
     # Extract type
     type_pattern = r"^\[(.*?)\]\s*"
@@ -39,6 +41,34 @@ def parse_activity(activity: str) -> dict:
     if "--completable" in remaining:
         completable = True
         remaining = remaining.replace("--completable", "").strip()
+
+    # Extract recurring flag
+    recurring_match = re.search(r"--recurring\s+(\S+)", remaining)
+    recurrence_days = None
+    recurrence_warning = None
+    if recurring_match:
+        if not completable:
+            raise ValueError("--recurring requires --completable flag")
+        recurrence_str = recurring_match.group(1)
+        recurrence_days, recurrence_warning = parse_recurrence_to_days(recurrence_str)
+        remaining = remaining.replace(recurring_match.group(0), "").strip()
+
+    # Extract due date flag
+    due_match = re.search(r"--due\s+(\S+)", remaining)
+    due_date = None
+    if due_match:
+        if not completable:
+            raise ValueError("--due requires --completable flag")
+        if recurrence_days is not None:
+            raise ValueError("Cannot use both --recurring and --due flags")
+        due_date = due_match.group(1)
+        # Validate date format (basic check)
+        try:
+            from datetime import datetime
+            datetime.fromisoformat(due_date)
+        except ValueError:
+            raise ValueError(f"Invalid date format: {due_date}. Use ISO format like 2026-01-15")
+        remaining = remaining.replace(due_match.group(0), "").strip()
 
     # Extract duration flag
     duration_match = re.search(r"--duration\s+(\S+)", remaining)
@@ -60,10 +90,15 @@ def parse_activity(activity: str) -> dict:
         "duration": duration,
         "completed": 0,
         "completable": completable,
+        "recurrence_days": recurrence_days,
+        "recurrence_warning": recurrence_warning,
+        "due_date": due_date,
     }
 
 
 def create_panel(data, title, width=None, show_completable=False):
+    from datetime import datetime
+
     table = Table(
         show_header=True,
         show_edge=False,
@@ -80,9 +115,23 @@ def create_panel(data, title, width=None, show_completable=False):
         # Build description with tags and duration
         desc = entry["description"]
 
+        # Check if overdue (only for scheduled tasks with due_date)
+        is_overdue = False
+        if entry.get("due_date") and not entry["completed"]:
+            try:
+                due = datetime.fromisoformat(entry["due_date"])
+                is_overdue = datetime.now() > due
+            except (ValueError, TypeError):
+                pass
+
         # Add checkbox indicator for completable activities
         if show_completable and entry.get("completable"):
-            checkbox = "☐" if not entry["completed"] else "☑"
+            if entry.get("recurrence_days"):
+                # Recurring task - use ⟳ symbol
+                checkbox = "☑" if entry["completed"] else "⟳"
+            else:
+                # Regular completable or scheduled task
+                checkbox = "☑" if entry["completed"] else "☐"
             desc = f"{checkbox} {desc}"
 
         # Add tags if present
@@ -93,6 +142,19 @@ def create_panel(data, title, width=None, show_completable=False):
         # Add duration if present
         if entry.get("duration"):
             desc = f"{desc} [dim cyan]({entry['duration']})[/dim cyan]"
+
+        # Add due date if present
+        if entry.get("due_date"):
+            due_str = entry["due_date"]
+            if is_overdue:
+                desc = f"[red]{desc} (due: {due_str})[/red]"
+            else:
+                desc = f"{desc} [dim](due: {due_str})[/dim]"
+
+        # Apply red styling for overdue tasks (wrapping entire row if not already styled)
+        if is_overdue and not entry.get("due_date"):
+            # This shouldn't happen, but just in case
+            pass
 
         table.add_row(str(ei), desc)
 
@@ -105,6 +167,17 @@ def create_panel(data, title, width=None, show_completable=False):
 
 
 def main():
+    # Reset expired recurring activities before doing anything else
+    from im_bored.db import reset_expired_recurring_activities
+
+    # Check database exists first
+    if os.path.exists(DB_PATH):
+        try:
+            reset_expired_recurring_activities()
+        except Exception:
+            # Silently ignore errors (e.g., if columns don't exist yet)
+            pass
+
     # Load arguments
     parser = argparse.ArgumentParser(description="im-bored CLI")
     parser.add_argument(
@@ -240,17 +313,34 @@ def main():
     if command == "add":
         from im_bored.db import add_activity_with_tags
 
-        parsed = parse_activity(" ".join(args.activity))
+        try:
+            parsed = parse_activity(" ".join(args.activity))
+        except ValueError as e:
+            console.print(f"[red]✗ Error:[/red] {e}")
+            return
+
         activity_type = parsed["type"]
         description = parsed["description"]
         tags = parsed["tags"]
         duration = parsed["duration"]
         completable = parsed["completable"]
+        recurrence_days = parsed["recurrence_days"]
+        recurrence_warning = parsed["recurrence_warning"]
+        due_date = parsed["due_date"]
+
+        # Show warning about month approximation if applicable
+        if recurrence_warning:
+            console.print(f"[yellow]⚠ {recurrence_warning}[/yellow]")
 
         # Add activity with tags
-        activity_id = add_activity_with_tags(
-            activity_type, description, tags, duration, completable
-        )
+        try:
+            activity_id = add_activity_with_tags(
+                activity_type, description, tags, duration, completable,
+                recurrence_days, due_date
+            )
+        except ValueError as e:
+            console.print(f"[red]✗ Error:[/red] {e}")
+            return
 
         # Build output message
         msg = f"Added activity: \\[{activity_type}] {description}"
@@ -261,6 +351,10 @@ def main():
             msg += f" ({duration})"
         if completable:
             msg += " [completable]"
+        if recurrence_days:
+            msg += f" [recurring: {recurrence_days} days]"
+        if due_date:
+            msg += f" [due: {due_date}]"
 
         console.print(msg)
 

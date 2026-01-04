@@ -207,6 +207,8 @@ def add_activity(activity_type: str, description: str, completable: bool = False
 def update_activity_completion(activity_id: int, completed: bool):
     """Toggle the completion status of an activity.
 
+    For recurring tasks, also updates last_completed_at and next_due_date when marking as complete.
+
     Args:
         activity_id: The ID of the activity to update
         completed: True to mark complete, False for incomplete
@@ -216,10 +218,34 @@ def update_activity_completion(activity_id: int, completed: bool):
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
+
+        # Get activity info to check if it's recurring
         cursor.execute(
-            "UPDATE activities SET completed = ? WHERE id = ?",
-            (1 if completed else 0, activity_id)
+            "SELECT recurrence_days FROM activities WHERE id = ?",
+            (activity_id,)
         )
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        recurrence_days = row[0]
+
+        if completed and recurrence_days is not None:
+            # For recurring tasks, update last_completed_at and next_due_date
+            cursor.execute("""
+                UPDATE activities
+                SET completed = 1,
+                    last_completed_at = CURRENT_TIMESTAMP,
+                    next_due_date = datetime(CURRENT_TIMESTAMP, '+' || ? || ' days')
+                WHERE id = ?
+            """, (recurrence_days, activity_id))
+        else:
+            # For non-recurring tasks or marking incomplete
+            cursor.execute(
+                "UPDATE activities SET completed = ? WHERE id = ?",
+                (1 if completed else 0, activity_id)
+            )
+
         return cursor.rowcount > 0
 
 
@@ -391,7 +417,7 @@ def parse_tags_from_description(description: str):
     return clean_description, tags
 
 
-def add_activity_with_tags(activity_type: str, description: str, tag_names: list[str], duration: str | None = None, completable: bool = False):
+def add_activity_with_tags(activity_type: str, description: str, tag_names: list[str], duration: str | None = None, completable: bool = False, recurrence_days: int | None = None, due_date: str | None = None):
     """Add a new activity with tags in a single transaction.
 
     Args:
@@ -400,17 +426,35 @@ def add_activity_with_tags(activity_type: str, description: str, tag_names: list
         tag_names: List of tag names (will be created if they don't exist)
         duration: Optional duration ('5min', '15min', '30min', '1h', '1h+')
         completable: Whether this is a completable one-off activity (default: False)
+        recurrence_days: Optional recurrence period in days (requires completable=True)
+        due_date: Optional due date for scheduled tasks (requires completable=True)
 
     Returns:
         int: The ID of the newly created activity
     """
+    # Validation
+    if recurrence_days is not None and not completable:
+        raise ValueError("recurrence_days requires completable=True")
+    if due_date is not None and not completable:
+        raise ValueError("due_date requires completable=True")
+    if recurrence_days is not None and due_date is not None:
+        raise ValueError("Cannot have both recurrence_days and due_date")
+
     with get_db_connection() as conn:
         cursor = conn.cursor()
 
+        # Calculate next_due_date for recurring tasks
+        next_due_date = None
+        if recurrence_days is not None:
+            cursor.execute("SELECT datetime('now', '+' || ? || ' days')", (recurrence_days,))
+            next_due_date = cursor.fetchone()[0]
+
         # Insert activity
         cursor.execute(
-            "INSERT INTO activities (type, description, completed, duration, completable) VALUES (?, ?, ?, ?, ?)",
-            (activity_type, description, 0, duration, 1 if completable else 0)
+            """INSERT INTO activities
+               (type, description, completed, duration, completable, recurrence_days, due_date, next_due_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (activity_type, description, 0, duration, 1 if completable else 0, recurrence_days, due_date, next_due_date)
         )
         activity_id = cursor.lastrowid
 
@@ -835,3 +879,97 @@ def get_activity_by_id(activity_id: int):
         cursor.execute("SELECT * FROM activities WHERE id = ?", (activity_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
+
+
+# ============================================================================
+# Recurring Task Management Functions
+# ============================================================================
+
+def reset_expired_recurring_activities():
+    """Reset recurring tasks that have passed their next_due_date.
+
+    This function should be called at program startup to ensure recurring tasks
+    are up-to-date. For tasks that have passed their due date, it:
+    - Marks them as incomplete (if they were completed)
+    - Rolls their next_due_date forward from the current time
+
+    Returns:
+        int: Number of activities reset
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+
+        # Get all recurring activities where next_due_date has passed
+        cursor.execute("""
+            SELECT id, recurrence_days
+            FROM activities
+            WHERE recurrence_days IS NOT NULL
+              AND completable = 1
+              AND next_due_date IS NOT NULL
+              AND datetime('now') >= datetime(next_due_date)
+        """)
+
+        activities_to_reset = cursor.fetchall()
+        reset_count = 0
+
+        for activity_id, recurrence_days in activities_to_reset:
+            # Reset to incomplete and roll next_due_date forward from now
+            cursor.execute("""
+                UPDATE activities
+                SET completed = 0,
+                    next_due_date = datetime('now', '+' || ? || ' days')
+                WHERE id = ?
+            """, (recurrence_days, activity_id))
+            reset_count += 1
+
+        return reset_count
+
+
+def parse_recurrence_to_days(recurrence_str: str) -> tuple[int, str | None]:
+    """Parse a recurrence string into days.
+
+    Accepts formats like:
+    - "7days" or "7d" -> 7 days
+    - "2weeks" or "2w" -> 14 days
+    - "1month" or "1m" -> 30 days
+
+    Args:
+        recurrence_str: The recurrence string to parse
+
+    Returns:
+        tuple[int, str | None]: (days, warning_message)
+        - days: The number of days
+        - warning_message: Optional warning about approximations (e.g., for months)
+
+    Raises:
+        ValueError: If the format is invalid
+    """
+    import re
+
+    recurrence_str = recurrence_str.lower().strip()
+
+    # Match patterns like "7days", "7d", "2weeks", "2w", "1month", "1m"
+    match = re.match(r'^(\d+)\s*(days?|d|weeks?|w|months?|m)$', recurrence_str)
+
+    if not match:
+        raise ValueError(
+            f"Invalid recurrence format: '{recurrence_str}'. "
+            "Use formats like '7days', '2weeks', or '1month'"
+        )
+
+    count = int(match.group(1))
+    unit = match.group(2)
+
+    warning = None
+
+    if unit in ('days', 'day', 'd'):
+        days = count
+    elif unit in ('weeks', 'week', 'w'):
+        days = count * 7
+    elif unit in ('months', 'month', 'm'):
+        days = count * 30
+        warning = f"Using approximate month length: {count} month(s) = {days} days"
+    else:
+        raise ValueError(f"Unknown time unit: {unit}")
+
+    return days, warning

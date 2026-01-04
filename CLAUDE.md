@@ -1,1 +1,2 @@
-Use `uv` to run python commands, or source the .venv
+- Use `uv` to run python commands, or source the .venv
+- If you generate a single-use script, remove it after you've used it.
