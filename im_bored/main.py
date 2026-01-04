@@ -174,31 +174,31 @@ def main():
     subparser.add_parser("categories", help="List all activity categories")
 
     # Tag management commands
-    tag_parser = subparser.add_parser("tag", help="Manage tags")
-    tag_subparser = tag_parser.add_subparsers(dest="tag_command")
+    tags_parser = subparser.add_parser("tags", help="Manage tags")
+    tags_subparser = tags_parser.add_subparsers(dest="tags_command")
 
-    tag_subparser.add_parser("list", help="List all tags")
+    tags_subparser.add_parser("list", help="List all tags")
 
-    tag_create_parser = tag_subparser.add_parser("create", help="Create a new tag")
-    tag_create_parser.add_argument("name", type=str, help="Tag name")
+    tags_create_parser = tags_subparser.add_parser("create", help="Create a new tag")
+    tags_create_parser.add_argument("name", type=str, help="Tag name")
 
-    tag_delete_parser = tag_subparser.add_parser("delete", help="Delete a tag")
-    tag_delete_parser.add_argument("name", type=str, help="Tag name")
+    tags_delete_parser = tags_subparser.add_parser("delete", help="Delete a tag")
+    tags_delete_parser.add_argument("name", type=str, help="Tag name")
 
     # Vibe management commands
-    vibe_parser = subparser.add_parser("vibe", help="Manage vibes")
-    vibe_subparser = vibe_parser.add_subparsers(dest="vibe_command")
+    vibes_parser = subparser.add_parser("vibes", help="Manage vibes")
+    vibes_subparser = vibes_parser.add_subparsers(dest="vibes_command")
 
-    vibe_subparser.add_parser("list", help="List all vibes")
+    vibes_subparser.add_parser("list", help="List all vibes")
 
-    vibe_create_parser = vibe_subparser.add_parser("create", help="Create a new vibe")
-    vibe_create_parser.add_argument("name", type=str, help="Vibe name")
+    vibes_create_parser = vibes_subparser.add_parser("create", help="Create a new vibe")
+    vibes_create_parser.add_argument("name", type=str, help="Vibe name")
 
-    vibe_edit_parser = vibe_subparser.add_parser("edit", help="Edit a vibe's tags")
-    vibe_edit_parser.add_argument("name", type=str, help="Vibe name")
+    vibes_edit_parser = vibes_subparser.add_parser("edit", help="Edit a vibe's tags")
+    vibes_edit_parser.add_argument("name", type=str, help="Vibe name")
 
-    vibe_delete_parser = vibe_subparser.add_parser("delete", help="Delete a vibe")
-    vibe_delete_parser.add_argument("name", type=str, help="Vibe name")
+    vibes_delete_parser = vibes_subparser.add_parser("delete", help="Delete a vibe")
+    vibes_delete_parser.add_argument("name", type=str, help="Vibe name")
 
     # Add --vibe flag to default command
     parser.add_argument(
@@ -407,12 +407,12 @@ def main():
         else:
             console.print("No categories found.")
 
-    elif command == "tag":
+    elif command == "tags":
         from im_bored.db import get_all_tags, create_tag, get_tag_by_name, delete_tag
 
-        tag_command = args.tag_command
+        tags_command = args.tags_command
 
-        if tag_command == "list":
+        if tags_command == "list" or tags_command is None:
             tags = get_all_tags()
             if tags:
                 console.print("\n[bold cyan]Available Tags:[/bold cyan]")
@@ -428,11 +428,11 @@ def main():
             else:
                 console.print("No tags found.")
 
-        elif tag_command == "create":
+        elif tags_command == "create":
             tag_id = create_tag(args.name)
             console.print(f"✓ Created tag: #{args.name} (ID: {tag_id})")
 
-        elif tag_command == "delete":
+        elif tags_command == "delete":
             tag = get_tag_by_name(args.name)
             if tag:
                 if delete_tag(tag["id"]):
@@ -442,7 +442,7 @@ def main():
             else:
                 console.print(f"✗ Tag not found: #{args.name}")
 
-    elif command == "vibe":
+    elif command == "vibes":
         from im_bored.db import (
             get_all_vibes,
             create_vibe,
@@ -454,9 +454,9 @@ def main():
         )
         from rich.prompt import Prompt
 
-        vibe_command = args.vibe_command
+        vibes_command = args.vibes_command
 
-        if vibe_command == "list":
+        if vibes_command == "list" or vibes_command is None:
             vibes = get_all_vibes()
             if vibes:
                 console.print("\n[bold cyan]Available Vibes:[/bold cyan]")
@@ -471,7 +471,7 @@ def main():
             else:
                 console.print("No vibes found.")
 
-        elif vibe_command == "create":
+        elif vibes_command == "create":
             # Get all tags for selection
             all_tags = get_all_tags()
             if not all_tags:
@@ -528,7 +528,7 @@ def main():
             else:
                 console.print("✗ No valid tags selected. Vibe not created.")
 
-        elif vibe_command == "edit":
+        elif vibes_command == "edit":
             vibe = get_vibe_by_name(args.name)
             if not vibe:
                 console.print(f"✗ Vibe not found: {args.name}")
@@ -587,7 +587,7 @@ def main():
             else:
                 console.print("✗ No valid tags selected.")
 
-        elif vibe_command == "delete":
+        elif vibes_command == "delete":
             vibe = get_vibe_by_name(args.name)
             if vibe:
                 if delete_vibe(vibe["id"]):

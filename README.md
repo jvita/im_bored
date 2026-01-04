@@ -33,14 +33,14 @@ A "vibe" is tag-based grouping of multiple activities. For example, the "Rainy S
 
 ```bash
 # Define a new vibe
-imbored vibe create "Rainy Day"
+imbored vibes create "Rainy Day"
 >>> Vibe description (optional) (): A relaxing indoor activity
 
 >>> Enter tag numbers (comma-separated) or tag names (comma-separated with #):
 >>> Tags: #cozy, #indoor, #indoors, #calm
 
 # See existing vibes
-imbored vibe list
+imbored vibes
 
 # Generate an idea using a specified vibe
 imbored --vibe "Rainy Day"
