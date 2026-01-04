@@ -87,8 +87,8 @@ def get_random_uncompleted_activity_filtered(
             # Use ANY matching for vibes
             use_any_tag_matching = True
 
-        # Build the query
-        query = "SELECT * FROM activities WHERE completed = 0"
+        # Build the query - exclude archived activities
+        query = "SELECT * FROM activities WHERE completed = 0 AND archived = 0"
         params = []
 
         # Filter by type
@@ -261,6 +261,36 @@ def delete_activity(activity_id: int):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM activities WHERE id = ?", (activity_id,))
+        return cursor.rowcount > 0
+
+
+def archive_activity(activity_id: int):
+    """Archive an activity (hides it from default views but keeps in database).
+
+    Args:
+        activity_id: The ID of the activity to archive
+
+    Returns:
+        bool: True if archival was successful, False if activity not found
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE activities SET archived = 1 WHERE id = ?", (activity_id,))
+        return cursor.rowcount > 0
+
+
+def unarchive_activity(activity_id: int):
+    """Unarchive an activity (restores it to default views).
+
+    Args:
+        activity_id: The ID of the activity to unarchive
+
+    Returns:
+        bool: True if unarchival was successful, False if activity not found
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE activities SET archived = 0 WHERE id = ?", (activity_id,))
         return cursor.rowcount > 0
 
 

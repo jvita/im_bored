@@ -114,6 +114,7 @@ def create_panel(data, title, width=None, show_completable=False):
     for ei, entry in data:
         # Build description with tags and duration
         desc = entry["description"]
+        is_archived = entry.get("archived", 0) == 1
 
         # Check if overdue (only for scheduled tasks with due_date)
         is_overdue = False
@@ -151,12 +152,15 @@ def create_panel(data, title, width=None, show_completable=False):
             else:
                 desc = f"{desc} [dim](due: {due_str})[/dim]"
 
-        # Apply red styling for overdue tasks (wrapping entire row if not already styled)
-        if is_overdue and not entry.get("due_date"):
-            # This shouldn't happen, but just in case
-            pass
+        # Apply styling based on archived status
+        if is_archived:
+            # Dim archived activities and add [archived] label
+            desc = f"[dim]{desc} [italic]\\[archived][/italic][/dim]"
+            id_str = f"[dim]{ei}[/dim]"
+        else:
+            id_str = str(ei)
 
-        table.add_row(str(ei), desc)
+        table.add_row(id_str, desc)
 
     return Panel(
         table,
@@ -220,6 +224,16 @@ def main():
         "index", type=int, help="The ID of the activity to remove"
     )
 
+    archive_parser = subparser.add_parser("archive", help="Archive an activity (hides from default view, keeps history)")
+    archive_parser.add_argument(
+        "index", type=int, help="The ID of the activity to archive"
+    )
+
+    unarchive_parser = subparser.add_parser("unarchive", help="Unarchive an activity")
+    unarchive_parser.add_argument(
+        "index", type=int, help="The ID of the activity to unarchive"
+    )
+
     activities_parser = subparser.add_parser(
         "activities", help="List all activities (excluding to-do)"
     )
@@ -232,6 +246,9 @@ def main():
     )
     activities_parser.add_argument(
         "--completed", action="store_true", help="Show only completed activities"
+    )
+    activities_parser.add_argument(
+        "--show-archived", action="store_true", help="Show archived activities"
     )
 
     todo_parser = subparser.add_parser("todo", help="Show the to-do list")
@@ -276,6 +293,9 @@ def main():
     # Add --vibe flag to default command
     parser.add_argument(
         "--vibe", type=str, help="Filter activities by vibe (for default command)"
+    )
+    parser.add_argument(
+        "--show-archived", action="store_true", help="Show archived activities (for default command)"
     )
 
     # Stats command
@@ -387,6 +407,36 @@ def main():
 
         delete_activity(args.index)
         console.print(f"✓ Removed activity {args.index}: {activity['description']}")
+
+    elif command == "archive":
+        from im_bored.db import archive_activity, get_activity_by_id
+
+        activity = get_activity_by_id(args.index)
+        if not activity:
+            console.print(f"✗ Activity ID {args.index} not found")
+            return
+
+        if activity.get("archived"):
+            console.print(f"Activity {args.index} is already archived")
+            return
+
+        archive_activity(args.index)
+        console.print(f"✓ Archived activity {args.index}: {activity['description']}")
+
+    elif command == "unarchive":
+        from im_bored.db import unarchive_activity, get_activity_by_id
+
+        activity = get_activity_by_id(args.index)
+        if not activity:
+            console.print(f"✗ Activity ID {args.index} not found")
+            return
+
+        if not activity.get("archived"):
+            console.print(f"Activity {args.index} is not archived")
+            return
+
+        unarchive_activity(args.index)
+        console.print(f"✓ Unarchived activity {args.index}: {activity['description']}")
     elif command == "activities":
         from im_bored.db import get_tags_for_activity
 
@@ -402,6 +452,10 @@ def main():
             a for a in activities
             if not (a.get("completable") and a["completed"] and not a.get("recurrence_days"))
         ]
+
+        # Filter out archived activities unless --show-archived is set
+        if not args.show_archived:
+            activities = [a for a in activities if not a.get("archived")]
 
         # Fetch tags for each activity
         for activity in activities:
@@ -461,9 +515,9 @@ def main():
 
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            # Only get incomplete completable activities
+            # Only get incomplete completable activities that are not archived
             cursor.execute(
-                "SELECT * FROM activities WHERE completed = 0 AND completable = 1 ORDER BY id"
+                "SELECT * FROM activities WHERE completed = 0 AND completable = 1 AND archived = 0 ORDER BY id"
             )
             activities = [dict(row) for row in cursor.fetchall()]
 
@@ -919,6 +973,10 @@ def main():
             a for a in activities
             if not (a.get("completable") and a["completed"] and not a.get("recurrence_days"))
         ]
+
+        # Filter out archived activities unless --show-archived is set
+        if not args.show_archived:
+            activities = [a for a in activities if not a.get("archived")]
 
         # Fetch tags for each activity
         for activity in activities:
