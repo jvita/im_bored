@@ -20,12 +20,21 @@ imbored add "[read] Read a book --duration 30min"
 
 # Make the activity a completable, one-off to-do item
 imbored add "Buy groceries --completable"
+
+# Give a completable item a due date (year-month-day)
+imbored add "Buy groceries --due 2026-01-08"
+
+# Make a completable item recurring (e.g., "3days", "2weeks", "1month")
+imbored add "Buy groceries --recurring 7days"
 ```
 
 ### Removing activities
 ```bash
-# Basic remove (by ID)
+# Basic permanent removal (by ID)
 imbored remove 1
+
+# Archive (remove from display, but keep for future reference)
+imbored archive 1
 ```
 
 ### Defining "vibes"
@@ -49,23 +58,26 @@ imbored --vibe "Rainy Day"
 ### Browsing activities
 ```bash
 # Show everything
-imbored activities
+imbored
 
 # Show only specific categories/tags/durations
-imbored activities --type read
-imbored activities --tags cozy
-imbored activities --duration 30min
+imbored --type read
+imbored --tags cozy
+imbored --duration 30min
+
+# Show archived
+imbored --show-archived
 ```
 
 ### Generating an idea
 ```bash
 # Return a random activity
-imbored
+imbored random
 
 # Return a random activity using category/tag/duration as a filter
-imbored --type read
-imbored --tags exercise
-imbored --duration 30min
+imbored random --type read
+imbored random --tags exercise
+imbored random --duration 30min
 ```
 
 ### Optional Tracking (Stress-Free)
