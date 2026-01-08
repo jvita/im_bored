@@ -3,9 +3,259 @@
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+import os
 
-# Database path relative to this module
-DB_PATH = Path(__file__).parent.parent / "data" / "activities.db"
+# Environment file location (in project root)
+ENV_FILE = Path(__file__).parent.parent / ".env"
+
+# Default database path
+DEFAULT_DB_PATH = Path(__file__).parent.parent / "data" / "activities.db"
+
+
+def get_db_path() -> Path:
+    """Get the database path from .env file or use default.
+
+    Returns:
+        Path: The configured database path or default
+    """
+    # Check environment variable first
+    env_path = os.environ.get("IM_BORED_DB_PATH")
+    if env_path:
+        return Path(env_path)
+
+    # Check .env file
+    if ENV_FILE.exists():
+        with open(ENV_FILE, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("IM_BORED_DB_PATH="):
+                    path_str = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if path_str:
+                        return Path(path_str)
+
+    return DEFAULT_DB_PATH
+
+
+def set_db_path(path: Path):
+    """Save the database path to .env file.
+
+    Args:
+        path: Path to the database file
+    """
+    lines = []
+    found = False
+
+    # Read existing .env if it exists
+    if ENV_FILE.exists():
+        with open(ENV_FILE, "r") as f:
+            for line in f:
+                if line.strip().startswith("IM_BORED_DB_PATH="):
+                    lines.append(f'IM_BORED_DB_PATH="{path}"\n')
+                    found = True
+                else:
+                    lines.append(line)
+
+    # If not found, add it
+    if not found:
+        lines.append(f'IM_BORED_DB_PATH="{path}"\n')
+
+    # Write back to .env
+    with open(ENV_FILE, "w") as f:
+        f.writelines(lines)
+
+
+# Get the current database path
+DB_PATH = get_db_path()
+
+
+def initialize_database(db_path: Path | None = None):
+    """Initialize a new database with the full schema.
+
+    Args:
+        db_path: Path where the database should be created.
+                If None, uses the default DB_PATH.
+    """
+    if db_path is None:
+        db_path = DB_PATH
+
+    # Ensure parent directory exists
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Create and initialize the database
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    try:
+        # Create activities table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS activities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                description TEXT NOT NULL,
+                completed INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                duration TEXT CHECK(duration IS NULL OR duration IN ('5min', '15min', '30min', '1h', '1h+')),
+                completable INTEGER NOT NULL DEFAULT 0,
+                recurrence_days INTEGER CHECK(recurrence_days IS NULL OR recurrence_days > 0),
+                last_completed_at TIMESTAMP,
+                due_date TIMESTAMP,
+                next_due_date TIMESTAMP,
+                archived INTEGER NOT NULL DEFAULT 0
+            )
+        """
+        )
+
+        # Create indexes for activities
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_type ON activities(type)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_completed ON activities(completed)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_duration ON activities(duration)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_recurrence ON activities(recurrence_days)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_due_date ON activities(due_date)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_next_due_date ON activities(next_due_date)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_archived ON activities(archived)"
+        )
+
+        # Create timestamp trigger for activities
+        cursor.execute(
+            """
+            CREATE TRIGGER IF NOT EXISTS update_activities_timestamp
+            AFTER UPDATE ON activities
+            FOR EACH ROW
+            BEGIN
+                UPDATE activities SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+            END
+        """
+        )
+
+        # Create tags table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name)")
+
+        # Create activity_tags junction table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS activity_tags (
+                activity_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (activity_id, tag_id),
+                FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            )
+        """
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activity_tags_activity ON activity_tags(activity_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activity_tags_tag ON activity_tags(tag_id)"
+        )
+
+        # Create vibes table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vibes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vibes_name ON vibes(name)")
+
+        # Create timestamp trigger for vibes
+        cursor.execute(
+            """
+            CREATE TRIGGER IF NOT EXISTS update_vibes_timestamp
+            AFTER UPDATE ON vibes
+            FOR EACH ROW
+            BEGIN
+                UPDATE vibes SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+            END
+        """
+        )
+
+        # Create vibe_tags junction table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vibe_tags (
+                vibe_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (vibe_id, tag_id),
+                FOREIGN KEY (vibe_id) REFERENCES vibes(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            )
+        """
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vibe_tags_vibe ON vibe_tags(vibe_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vibe_tags_tag ON vibe_tags(tag_id)"
+        )
+
+        # Create decision_events table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS decision_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                activity_id INTEGER NOT NULL,
+                vibe_id INTEGER,
+                filter_tags TEXT,
+                outcome TEXT NOT NULL CHECK(outcome IN ('COMPLETED', 'SKIPPED', 'IGNORED')),
+                session_id TEXT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
+                FOREIGN KEY (vibe_id) REFERENCES vibes(id) ON DELETE SET NULL
+            )
+        """
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_decision_events_activity ON decision_events(activity_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_decision_events_vibe ON decision_events(vibe_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_decision_events_outcome ON decision_events(outcome)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_decision_events_created ON decision_events(created_at)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_decision_events_session ON decision_events(session_id)"
+        )
+
+        conn.commit()
+
+    finally:
+        conn.close()
 
 
 @contextmanager
@@ -35,10 +285,10 @@ def get_random_uncompleted_activity(activity_types=None):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         if activity_types:
-            placeholders = ','.join('?' * len(activity_types))
+            placeholders = ",".join("?" * len(activity_types))
             cursor.execute(
                 f"SELECT * FROM activities WHERE completed = 0 AND type IN ({placeholders}) ORDER BY RANDOM() LIMIT 1",
-                activity_types
+                activity_types,
             )
         else:
             cursor.execute(
@@ -49,10 +299,7 @@ def get_random_uncompleted_activity(activity_types=None):
 
 
 def get_random_uncompleted_activity_filtered(
-    activity_types=None,
-    tag_ids=None,
-    duration=None,
-    vibe_id=None
+    activity_types=None, tag_ids=None, duration=None, vibe_id=None
 ):
     """Get a random uncompleted activity with advanced filtering.
 
@@ -73,9 +320,12 @@ def get_random_uncompleted_activity_filtered(
 
         # If vibe_id is provided, get its tags
         if vibe_id is not None:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT tag_id FROM vibe_tags WHERE vibe_id = ?
-            """, (vibe_id,))
+            """,
+                (vibe_id,),
+            )
             vibe_tag_ids = [row[0] for row in cursor.fetchall()]
 
             # Combine with any additional tag filters
@@ -93,7 +343,7 @@ def get_random_uncompleted_activity_filtered(
 
         # Filter by type
         if activity_types:
-            placeholders = ','.join('?' * len(activity_types))
+            placeholders = ",".join("?" * len(activity_types))
             query += f" AND type IN ({placeholders})"
             params.extend(activity_types)
 
@@ -109,7 +359,9 @@ def get_random_uncompleted_activity_filtered(
                 query += """ AND id IN (
                     SELECT DISTINCT activity_id FROM activity_tags
                     WHERE tag_id IN ({})
-                )""".format(','.join('?' * len(tag_ids)))
+                )""".format(
+                    ",".join("?" * len(tag_ids))
+                )
                 params.extend(tag_ids)
             else:
                 # For explicit tag filters: activity must have ALL specified tags
@@ -118,7 +370,9 @@ def get_random_uncompleted_activity_filtered(
                     WHERE tag_id IN ({})
                     GROUP BY activity_id
                     HAVING COUNT(DISTINCT tag_id) = ?
-                )""".format(','.join('?' * len(tag_ids)))
+                )""".format(
+                    ",".join("?" * len(tag_ids))
+                )
                 params.extend(tag_ids)
                 params.append(len(tag_ids))
 
@@ -143,8 +397,7 @@ def update_activity_duration(activity_id: int, duration: str | None):
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE activities SET duration = ? WHERE id = ?",
-            (duration, activity_id)
+            "UPDATE activities SET duration = ? WHERE id = ?", (duration, activity_id)
         )
         return cursor.rowcount > 0
 
@@ -163,7 +416,7 @@ def get_all_activities():
     # Group by type
     grouped = {}
     for activity in activities:
-        activity_type = activity['type']
+        activity_type = activity["type"]
         if activity_type not in grouped:
             grouped[activity_type] = []
         grouped[activity_type].append(activity)
@@ -180,7 +433,7 @@ def get_all_types():
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT DISTINCT type FROM activities ORDER BY type")
-        types = [row['type'] for row in cursor.fetchall()]
+        types = [row["type"] for row in cursor.fetchall()]
     return types
 
 
@@ -199,7 +452,7 @@ def add_activity(activity_type: str, description: str, completable: bool = False
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO activities (type, description, completed, completable) VALUES (?, ?, ?, ?)",
-            (activity_type, description, 0, 1 if completable else 0)
+            (activity_type, description, 0, 1 if completable else 0),
         )
         return cursor.lastrowid
 
@@ -221,8 +474,7 @@ def update_activity_completion(activity_id: int, completed: bool):
 
         # Get activity info to check if it's recurring
         cursor.execute(
-            "SELECT recurrence_days FROM activities WHERE id = ?",
-            (activity_id,)
+            "SELECT recurrence_days FROM activities WHERE id = ?", (activity_id,)
         )
         row = cursor.fetchone()
         if not row:
@@ -232,18 +484,21 @@ def update_activity_completion(activity_id: int, completed: bool):
 
         if completed and recurrence_days is not None:
             # For recurring tasks, update last_completed_at and next_due_date
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE activities
                 SET completed = 1,
                     last_completed_at = CURRENT_TIMESTAMP,
                     next_due_date = datetime(CURRENT_TIMESTAMP, '+' || ? || ' days')
                 WHERE id = ?
-            """, (recurrence_days, activity_id))
+            """,
+                (recurrence_days, activity_id),
+            )
         else:
             # For non-recurring tasks or marking incomplete
             cursor.execute(
                 "UPDATE activities SET completed = ? WHERE id = ?",
-                (1 if completed else 0, activity_id)
+                (1 if completed else 0, activity_id),
             )
 
         return cursor.rowcount > 0
@@ -275,7 +530,9 @@ def archive_activity(activity_id: int):
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE activities SET archived = 1 WHERE id = ?", (activity_id,))
+        cursor.execute(
+            "UPDATE activities SET archived = 1 WHERE id = ?", (activity_id,)
+        )
         return cursor.rowcount > 0
 
 
@@ -290,13 +547,16 @@ def unarchive_activity(activity_id: int):
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("UPDATE activities SET archived = 0 WHERE id = ?", (activity_id,))
+        cursor.execute(
+            "UPDATE activities SET archived = 0 WHERE id = ?", (activity_id,)
+        )
         return cursor.rowcount > 0
 
 
 # ============================================================================
 # Tag Management Functions
 # ============================================================================
+
 
 def get_all_tags():
     """Get all tags from the database.
@@ -372,12 +632,15 @@ def get_tags_for_activity(activity_id: int):
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT t.* FROM tags t
             JOIN activity_tags at ON t.id = at.tag_id
             WHERE at.activity_id = ?
             ORDER BY t.name
-        """, (activity_id,))
+        """,
+            (activity_id,),
+        )
         return [dict(row) for row in cursor.fetchall()]
 
 
@@ -396,7 +659,7 @@ def add_tag_to_activity(activity_id: int, tag_id: int):
         try:
             cursor.execute(
                 "INSERT INTO activity_tags (activity_id, tag_id) VALUES (?, ?)",
-                (activity_id, tag_id)
+                (activity_id, tag_id),
             )
             return True
         except sqlite3.IntegrityError:
@@ -418,7 +681,7 @@ def remove_tag_from_activity(activity_id: int, tag_id: int):
         cursor = conn.cursor()
         cursor.execute(
             "DELETE FROM activity_tags WHERE activity_id = ? AND tag_id = ?",
-            (activity_id, tag_id)
+            (activity_id, tag_id),
         )
         return cursor.rowcount > 0
 
@@ -436,18 +699,26 @@ def parse_tags_from_description(description: str):
     import re
 
     # Find all hashtags (including hyphens)
-    tag_pattern = r'#([\w-]+)'
+    tag_pattern = r"#([\w-]+)"
     tags = re.findall(tag_pattern, description)
 
     # Remove hashtags from description
-    clean_description = re.sub(tag_pattern, '', description).strip()
+    clean_description = re.sub(tag_pattern, "", description).strip()
     # Clean up multiple spaces
-    clean_description = re.sub(r'\s+', ' ', clean_description)
+    clean_description = re.sub(r"\s+", " ", clean_description)
 
     return clean_description, tags
 
 
-def add_activity_with_tags(activity_type: str, description: str, tag_names: list[str], duration: str | None = None, completable: bool = False, recurrence_days: int | None = None, due_date: str | None = None):
+def add_activity_with_tags(
+    activity_type: str,
+    description: str,
+    tag_names: list[str],
+    duration: str | None = None,
+    completable: bool = False,
+    recurrence_days: int | None = None,
+    due_date: str | None = None,
+):
     """Add a new activity with tags in a single transaction.
 
     Args:
@@ -476,7 +747,9 @@ def add_activity_with_tags(activity_type: str, description: str, tag_names: list
         # Calculate next_due_date for recurring tasks
         next_due_date = None
         if recurrence_days is not None:
-            cursor.execute("SELECT datetime('now', '+' || ? || ' days')", (recurrence_days,))
+            cursor.execute(
+                "SELECT datetime('now', '+' || ? || ' days')", (recurrence_days,)
+            )
             next_due_date = cursor.fetchone()[0]
 
         # Insert activity
@@ -484,7 +757,16 @@ def add_activity_with_tags(activity_type: str, description: str, tag_names: list
             """INSERT INTO activities
                (type, description, completed, duration, completable, recurrence_days, due_date, next_due_date)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (activity_type, description, 0, duration, 1 if completable else 0, recurrence_days, due_date, next_due_date)
+            (
+                activity_type,
+                description,
+                0,
+                duration,
+                1 if completable else 0,
+                recurrence_days,
+                due_date,
+                next_due_date,
+            ),
         )
         activity_id = cursor.lastrowid
 
@@ -503,7 +785,7 @@ def add_activity_with_tags(activity_type: str, description: str, tag_names: list
             try:
                 cursor.execute(
                     "INSERT INTO activity_tags (activity_id, tag_id) VALUES (?, ?)",
-                    (activity_id, tag_id)
+                    (activity_id, tag_id),
                 )
             except sqlite3.IntegrityError:
                 # Already associated, skip
@@ -515,6 +797,7 @@ def add_activity_with_tags(activity_type: str, description: str, tag_names: list
 # ============================================================================
 # Vibe Management Functions
 # ============================================================================
+
 
 def get_all_vibes():
     """Get all vibes with their associated tags.
@@ -529,13 +812,16 @@ def get_all_vibes():
 
         # Fetch tags for each vibe
         for vibe in vibes:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT t.* FROM tags t
                 JOIN vibe_tags vt ON t.id = vt.tag_id
                 WHERE vt.vibe_id = ?
                 ORDER BY t.name
-            """, (vibe['id'],))
-            vibe['tags'] = [dict(row) for row in cursor.fetchall()]
+            """,
+                (vibe["id"],),
+            )
+            vibe["tags"] = [dict(row) for row in cursor.fetchall()]
 
         return vibes
 
@@ -560,13 +846,16 @@ def get_vibe_by_id(vibe_id: int):
         vibe = dict(row)
 
         # Fetch associated tags
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT t.* FROM tags t
             JOIN vibe_tags vt ON t.id = vt.tag_id
             WHERE vt.vibe_id = ?
             ORDER BY t.name
-        """, (vibe_id,))
-        vibe['tags'] = [dict(row) for row in cursor.fetchall()]
+        """,
+            (vibe_id,),
+        )
+        vibe["tags"] = [dict(row) for row in cursor.fetchall()]
 
         return vibe
 
@@ -591,13 +880,16 @@ def get_vibe_by_name(name: str):
         vibe = dict(row)
 
         # Fetch associated tags
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT t.* FROM tags t
             JOIN vibe_tags vt ON t.id = vt.tag_id
             WHERE vt.vibe_id = ?
             ORDER BY t.name
-        """, (vibe['id'],))
-        vibe['tags'] = [dict(row) for row in cursor.fetchall()]
+        """,
+            (vibe["id"],),
+        )
+        vibe["tags"] = [dict(row) for row in cursor.fetchall()]
 
         return vibe
 
@@ -618,8 +910,7 @@ def create_vibe(name: str, description: str, tag_ids: list[int]):
 
         # Insert vibe
         cursor.execute(
-            "INSERT INTO vibes (name, description) VALUES (?, ?)",
-            (name, description)
+            "INSERT INTO vibes (name, description) VALUES (?, ?)", (name, description)
         )
         vibe_id = cursor.lastrowid
 
@@ -627,7 +918,7 @@ def create_vibe(name: str, description: str, tag_ids: list[int]):
         for tag_id in tag_ids:
             cursor.execute(
                 "INSERT INTO vibe_tags (vibe_id, tag_id) VALUES (?, ?)",
-                (vibe_id, tag_id)
+                (vibe_id, tag_id),
             )
 
         return vibe_id
@@ -651,7 +942,7 @@ def update_vibe(vibe_id: int, name: str, description: str, tag_ids: list[int]):
         # Update vibe
         cursor.execute(
             "UPDATE vibes SET name = ?, description = ? WHERE id = ?",
-            (name, description, vibe_id)
+            (name, description, vibe_id),
         )
 
         if cursor.rowcount == 0:
@@ -664,7 +955,7 @@ def update_vibe(vibe_id: int, name: str, description: str, tag_ids: list[int]):
         for tag_id in tag_ids:
             cursor.execute(
                 "INSERT INTO vibe_tags (vibe_id, tag_id) VALUES (?, ?)",
-                (vibe_id, tag_id)
+                (vibe_id, tag_id),
             )
 
         return True
@@ -696,12 +987,15 @@ def get_tags_for_vibe(vibe_id: int):
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT t.* FROM tags t
             JOIN vibe_tags vt ON t.id = vt.tag_id
             WHERE vt.vibe_id = ?
             ORDER BY t.name
-        """, (vibe_id,))
+        """,
+            (vibe_id,),
+        )
         return [dict(row) for row in cursor.fetchall()]
 
 
@@ -709,12 +1003,13 @@ def get_tags_for_vibe(vibe_id: int):
 # Decision Events & Analytics Functions
 # ============================================================================
 
+
 def log_decision_event(
     activity_id: int,
     outcome: str,
     vibe_id: int | None = None,
     filter_tags: list[int] | None = None,
-    session_id: str | None = None
+    session_id: str | None = None,
 ):
     """Log a decision event.
 
@@ -736,10 +1031,13 @@ def log_decision_event(
         # Convert filter_tags to JSON string
         filter_tags_json = json.dumps(filter_tags) if filter_tags else None
 
-        cursor.execute("""
+        cursor.execute(
+            """
             INSERT INTO decision_events (activity_id, outcome, vibe_id, filter_tags, session_id)
             VALUES (?, ?, ?, ?, ?)
-        """, (activity_id, outcome, vibe_id, filter_tags_json, session_id))
+        """,
+            (activity_id, outcome, vibe_id, filter_tags_json, session_id),
+        )
 
         return cursor.lastrowid
 
@@ -767,9 +1065,12 @@ def get_decision_stats(days: int | None = None):
 
         # Calculate date threshold if days is specified
         if days is not None:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT datetime('now', '-' || ? || ' days')
-            """, (days,))
+            """,
+                (days,),
+            )
             since_date = cursor.fetchone()[0]
             where_clause = "WHERE created_at >= ?"
             params = (since_date,)
@@ -778,26 +1079,34 @@ def get_decision_stats(days: int | None = None):
             params = ()
 
         # Total rolls
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT COUNT(*) FROM decision_events
             {where_clause}
-        """, params)
+        """,
+            params,
+        )
         total_rolls = cursor.fetchone()[0]
 
         # Outcome counts
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT outcome, COUNT(*) FROM decision_events
             {where_clause}
             GROUP BY outcome
-        """, params)
+        """,
+            params,
+        )
         outcome_counts = {row[0]: row[1] for row in cursor.fetchall()}
 
-        completed_count = outcome_counts.get('COMPLETED', 0)
-        skipped_count = outcome_counts.get('SKIPPED', 0)
-        ignored_count = outcome_counts.get('IGNORED', 0)
+        completed_count = outcome_counts.get("COMPLETED", 0)
+        skipped_count = outcome_counts.get("SKIPPED", 0)
+        ignored_count = outcome_counts.get("IGNORED", 0)
 
         # Completion rate
-        completion_rate = (completed_count / total_rolls * 100) if total_rolls > 0 else 0
+        completion_rate = (
+            (completed_count / total_rolls * 100) if total_rolls > 0 else 0
+        )
         skip_rate = (skipped_count / total_rolls * 100) if total_rolls > 0 else 0
 
         # Most completed activities
@@ -812,7 +1121,8 @@ def get_decision_stats(days: int | None = None):
             vibe_where = "WHERE de.vibe_id IS NOT NULL"
             query_params = ()
 
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT a.id, a.description, a.type, COUNT(*) as count
             FROM decision_events de
             JOIN activities a ON de.activity_id = a.id
@@ -820,11 +1130,14 @@ def get_decision_stats(days: int | None = None):
             GROUP BY a.id
             ORDER BY count DESC
             LIMIT 5
-        """, query_params)
+        """,
+            query_params,
+        )
         most_completed = [dict(row) for row in cursor.fetchall()]
 
         # Most skipped activities
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT a.id, a.description, a.type, COUNT(*) as count
             FROM decision_events de
             JOIN activities a ON de.activity_id = a.id
@@ -832,31 +1145,36 @@ def get_decision_stats(days: int | None = None):
             GROUP BY a.id
             ORDER BY count DESC
             LIMIT 5
-        """, query_params)
+        """,
+            query_params,
+        )
         most_skipped = [dict(row) for row in cursor.fetchall()]
 
         # Vibe usage
-        cursor.execute(f"""
+        cursor.execute(
+            f"""
             SELECT v.name, COUNT(*) as count
             FROM decision_events de
             JOIN vibes v ON de.vibe_id = v.id
             {vibe_where}
             GROUP BY v.id
             ORDER BY count DESC
-        """, query_params)
+        """,
+            query_params,
+        )
         vibe_usage = {row[0]: row[1] for row in cursor.fetchall()}
 
         return {
-            'total_rolls': total_rolls,
-            'completed_count': completed_count,
-            'skipped_count': skipped_count,
-            'ignored_count': ignored_count,
-            'completion_rate': completion_rate,
-            'skip_rate': skip_rate,
-            'most_completed': most_completed,
-            'most_skipped': most_skipped,
-            'vibe_usage': vibe_usage,
-            'days': days
+            "total_rolls": total_rolls,
+            "completed_count": completed_count,
+            "skipped_count": skipped_count,
+            "ignored_count": ignored_count,
+            "completion_rate": completion_rate,
+            "skip_rate": skip_rate,
+            "most_completed": most_completed,
+            "most_skipped": most_skipped,
+            "vibe_usage": vibe_usage,
+            "days": days,
         }
 
 
@@ -872,12 +1190,15 @@ def get_activity_decision_history(activity_id: int, limit: int = 10):
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT * FROM decision_events
             WHERE activity_id = ?
             ORDER BY created_at DESC
             LIMIT ?
-        """, (activity_id, limit))
+        """,
+            (activity_id, limit),
+        )
         return [dict(row) for row in cursor.fetchall()]
 
 
@@ -915,6 +1236,7 @@ def get_activity_by_id(activity_id: int):
 # Recurring Task Management Functions
 # ============================================================================
 
+
 def reset_expired_recurring_activities():
     """Reset recurring tasks that have passed their next_due_date.
 
@@ -930,26 +1252,31 @@ def reset_expired_recurring_activities():
         cursor = conn.cursor()
 
         # Get all recurring activities where next_due_date has passed
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT id, recurrence_days
             FROM activities
             WHERE recurrence_days IS NOT NULL
               AND completable = 1
               AND next_due_date IS NOT NULL
               AND datetime('now') >= datetime(next_due_date)
-        """)
+        """
+        )
 
         activities_to_reset = cursor.fetchall()
         reset_count = 0
 
         for activity_id, recurrence_days in activities_to_reset:
             # Reset to incomplete and roll next_due_date forward from now
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE activities
                 SET completed = 0,
                     next_due_date = datetime('now', '+' || ? || ' days')
                 WHERE id = ?
-            """, (recurrence_days, activity_id))
+            """,
+                (recurrence_days, activity_id),
+            )
             reset_count += 1
 
         return reset_count
@@ -979,7 +1306,7 @@ def parse_recurrence_to_days(recurrence_str: str) -> tuple[int, str | None]:
     recurrence_str = recurrence_str.lower().strip()
 
     # Match patterns like "7days", "7d", "2weeks", "2w", "1month", "1m"
-    match = re.match(r'^(\d+)\s*(days?|d|weeks?|w|months?|m)$', recurrence_str)
+    match = re.match(r"^(\d+)\s*(days?|d|weeks?|w|months?|m)$", recurrence_str)
 
     if not match:
         raise ValueError(
@@ -992,11 +1319,11 @@ def parse_recurrence_to_days(recurrence_str: str) -> tuple[int, str | None]:
 
     warning = None
 
-    if unit in ('days', 'day', 'd'):
+    if unit in ("days", "day", "d"):
         days = count
-    elif unit in ('weeks', 'week', 'w'):
+    elif unit in ("weeks", "week", "w"):
         days = count * 7
-    elif unit in ('months', 'month', 'm'):
+    elif unit in ("months", "month", "m"):
         days = count * 30
         warning = f"Using approximate month length: {count} month(s) = {days} days"
     else:

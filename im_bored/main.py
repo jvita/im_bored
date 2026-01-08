@@ -1,15 +1,56 @@
 import argparse
 import os
 import re
+from pathlib import Path
 
 from rich.columns import Columns
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from im_bored.db import DB_PATH, get_db_connection
+from im_bored.db import (
+    DB_PATH,
+    get_db_connection,
+    initialize_database,
+    set_db_path,
+    DEFAULT_DB_PATH,
+)
 
 console = Console()
+
+
+def ensure_database_exists():
+    """Ensure database exists, prompting user for location if needed."""
+    if not os.path.exists(DB_PATH):
+        from rich.prompt import Prompt, Confirm
+
+        console.print("\n[yellow]Database not found.[/yellow]")
+        console.print(f"Default location: [cyan]{DEFAULT_DB_PATH}[/cyan]\n")
+
+        use_default = Confirm.ask(
+            "Would you like to create the database in the default location?",
+            default=True
+        )
+
+        if use_default:
+            db_path = DEFAULT_DB_PATH
+        else:
+            custom_path = Prompt.ask(
+                "Enter the full path where you'd like to create the database",
+                default=str(DEFAULT_DB_PATH)
+            )
+            db_path = Path(custom_path)
+
+        console.print(f"\n[cyan]Creating database at:[/cyan] {db_path}")
+
+        try:
+            initialize_database(db_path)
+            # Save the chosen path to config
+            set_db_path(db_path)
+            console.print("[green]✓ Database created successfully![/green]\n")
+        except Exception as e:
+            console.print(f"[red]✗ Error creating database:[/red] {e}")
+            raise
 
 
 def parse_activity(activity: str) -> dict:
@@ -196,16 +237,17 @@ def create_panel(data, title, width=None, show_completable=False):
 
 
 def main():
+    # Ensure database exists, create if needed
+    ensure_database_exists()
+
     # Reset expired recurring activities before doing anything else
     from im_bored.db import reset_expired_recurring_activities
 
-    # Check database exists first
-    if os.path.exists(DB_PATH):
-        try:
-            reset_expired_recurring_activities()
-        except Exception:
-            # Silently ignore errors (e.g., if columns don't exist yet)
-            pass
+    try:
+        reset_expired_recurring_activities()
+    except Exception:
+        # Silently ignore errors (e.g., if columns don't exist yet)
+        pass
 
     # Load arguments
     parser = argparse.ArgumentParser(description="im-bored CLI")
@@ -364,12 +406,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    # Check database exists
-    if not os.path.exists(DB_PATH):
-        console.print("✗ Database not found. Please run the migration script first:")
-        console.print("  python migrate_to_sqlite.py")
-        return
 
     # Execute command
     command = args.command
