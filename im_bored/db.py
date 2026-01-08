@@ -9,7 +9,7 @@ import os
 ENV_FILE = Path(__file__).parent.parent / ".env"
 
 # Default database path
-DEFAULT_DB_PATH = Path(__file__).parent.parent / "data" / "activities.db"
+DEFAULT_DB_PATH = Path(os.getcwd()) / "data" / "activities.db"
 
 
 def get_db_path() -> Path:
