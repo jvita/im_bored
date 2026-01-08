@@ -55,6 +55,7 @@ def add_activity(
         recurrence_days=recurrence_days,
         due_date=due_date,
     )
+    assert activity_id is not None  # db function always returns int
 
     # Archive if requested (db function doesn't support archived parameter)
     if archived:
@@ -423,7 +424,9 @@ def create_tag(name: str) -> int:
     if existing_tag:
         return existing_tag["id"]
 
-    return db.create_tag(name)
+    tag_id = db.create_tag(name)
+    assert tag_id is not None  # db function always returns int
+    return tag_id
 
 
 def delete_tag(name: str) -> None:
@@ -506,7 +509,9 @@ def create_vibe(name: str, description: str, tag_names: list[str]) -> int:
             raise ValueError(f"Tag '{tag_name}' not found")
         tag_ids.append(tag["id"])
 
-    return db.create_vibe(name, description, tag_ids)
+    vibe_id = db.create_vibe(name, description, tag_ids)
+    assert vibe_id is not None  # db function always returns int
+    return vibe_id
 
 
 def update_vibe(
