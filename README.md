@@ -30,8 +30,11 @@ imbored add "Buy groceries --recurring 7days"
 
 ### Removing activities
 ```bash
-# Basic remove (by ID)
+# Basic permanent removal (by ID)
 imbored remove 1
+
+# Archive (remove from display, but keep for future reference)
+imbored archive 1
 ```
 
 ### Defining "vibes"
@@ -55,23 +58,26 @@ imbored --vibe "Rainy Day"
 ### Browsing activities
 ```bash
 # Show everything
-imbored activities
+imbored
 
 # Show only specific categories/tags/durations
-imbored activities --type read
-imbored activities --tags cozy
-imbored activities --duration 30min
+imbored --type read
+imbored --tags cozy
+imbored --duration 30min
+
+# Show archived
+imbored --show-archived
 ```
 
 ### Generating an idea
 ```bash
 # Return a random activity
-imbored
+imbored random
 
 # Return a random activity using category/tag/duration as a filter
-imbored --type read
-imbored --tags exercise
-imbored --duration 30min
+imbored random --type read
+imbored random --tags exercise
+imbored random --duration 30min
 ```
 
 ### Optional Tracking (Stress-Free)
