@@ -20,6 +20,12 @@ imbored add "[read] Read a book --duration 30min"
 
 # Make the activity a completable, one-off to-do item
 imbored add "Buy groceries --completable"
+
+# Give a completable item a due date (year-month-day)
+imbored add "Buy groceries --due 2026-01-08"
+
+# Make a completable item recurring (e.g., "3days", "2weeks", "1month")
+imbored add "Buy groceries --recurring 7days"
 ```
 
 ### Removing activities
