@@ -10,11 +10,12 @@ from rich.table import Table
 
 from im_bored.db import (
     DB_PATH,
-    get_db_connection,
     initialize_database,
     set_db_path,
     DEFAULT_DB_PATH,
 )
+from im_bored import services
+from im_bored.parsing import parse_activity, format_recurrence_days
 
 console = Console()
 
@@ -51,110 +52,6 @@ def ensure_database_exists():
         except Exception as e:
             console.print(f"[red]✗ Error creating database:[/red] {e}")
             raise
-
-
-def parse_activity(activity: str) -> dict:
-    """Parse an activity string into a structured dictionary.
-
-    Format: [type] description #tag1 #tag2 --duration 15min --completable --recurring 2weeks --due 2026-01-15
-    If no type is specified, defaults to 'general'
-    Hashtags are extracted as tags
-    --duration flag specifies duration
-    --completable flag marks this as a one-off to-do activity
-    --recurring flag specifies recurrence period
-    --due flag specifies due date
-    """
-    from im_bored.db import parse_tags_from_description, parse_recurrence_to_days
-
-    # Extract type
-    type_pattern = r"^\[(.*?)\]\s*"
-    match = re.match(type_pattern, activity)
-
-    if match:
-        activity_type = match.group(1).strip()
-        remaining = activity[match.end() :].strip()
-    else:
-        activity_type = "general"
-        remaining = activity.strip()
-
-    # Extract completable flag
-    completable = False
-    if "--completable" in remaining:
-        completable = True
-        remaining = remaining.replace("--completable", "").strip()
-
-    # Extract recurring flag
-    recurring_match = re.search(r"--recurring\s+(\S+)", remaining)
-    recurrence_days = None
-    recurrence_warning = None
-    if recurring_match:
-        completable = True
-        recurrence_str = recurring_match.group(1)
-        recurrence_days, recurrence_warning = parse_recurrence_to_days(recurrence_str)
-        remaining = remaining.replace(recurring_match.group(0), "").strip()
-
-    # Extract due date flag
-    due_match = re.search(r"--due\s+(\S+)", remaining)
-    due_date = None
-    if due_match:
-        completable = True
-        if recurrence_days is not None:
-            raise ValueError("Cannot use both --recurring and --due flags")
-        due_date = due_match.group(1)
-        # Validate date format (basic check)
-        try:
-            from datetime import datetime
-
-            datetime.fromisoformat(due_date)
-        except ValueError:
-            raise ValueError(
-                f"Invalid date format: {due_date}. Use ISO format like 2026-01-15"
-            )
-        remaining = remaining.replace(due_match.group(0), "").strip()
-
-    # Extract duration flag
-    duration_match = re.search(r"--duration\s+(\S+)", remaining)
-    duration = None
-    if duration_match:
-        duration_str = duration_match.group(1)
-        # Validate duration
-        if duration_str in ["5min", "15min", "30min", "1h", "1h+"]:
-            duration = duration_str
-        remaining = remaining.replace(duration_match.group(0), "").strip()
-
-    # Extract hashtags and clean description
-    clean_description, tags = parse_tags_from_description(remaining)
-
-    return {
-        "type": activity_type,
-        "description": clean_description,
-        "tags": tags,
-        "duration": duration,
-        "completed": 0,
-        "completable": completable,
-        "recurrence_days": recurrence_days,
-        "recurrence_warning": recurrence_warning,
-        "due_date": due_date,
-    }
-
-
-def format_recurrence_days(days: int) -> str:
-    """Format recurrence days into a human-readable string.
-
-    Args:
-        days: Number of days
-
-    Returns:
-        str: Formatted string like "every 7d", "every 2w", "every 1m"
-    """
-    if days % 30 == 0 and days >= 30:
-        months = days // 30
-        return f"every {months}m"
-    elif days % 7 == 0 and days >= 7:
-        weeks = days // 7
-        return f"every {weeks}w"
-    else:
-        return f"every {days}d"
 
 
 def create_panel(data, title, width=None, show_completable=False):
@@ -411,107 +308,88 @@ def main():
     command = args.command
 
     if command == "add":
-        from im_bored.db import add_activity_with_tags
-
         try:
+            # Parse the activity string
             parsed = parse_activity(" ".join(args.activity))
-        except ValueError as e:
-            console.print(f"[red]✗ Error:[/red] {e}")
-            return
 
-        activity_type = parsed["type"]
-        description = parsed["description"]
-        tags = parsed["tags"]
-        duration = parsed["duration"]
-        completable = parsed["completable"]
-        recurrence_days = parsed["recurrence_days"]
-        recurrence_warning = parsed["recurrence_warning"]
-        due_date = parsed["due_date"]
+            # Show warning about month approximation if applicable
+            if parsed.get("recurrence_warning"):
+                console.print(f"[yellow]⚠ {parsed['recurrence_warning']}[/yellow]")
 
-        # Show warning about month approximation if applicable
-        if recurrence_warning:
-            console.print(f"[yellow]⚠ {recurrence_warning}[/yellow]")
-
-        # Add activity with tags
-        try:
-            activity_id = add_activity_with_tags(
-                activity_type,
-                description,
-                tags,
-                duration,
-                completable,
-                recurrence_days,
-                due_date,
+            # Add activity via services layer
+            activity_id = services.add_activity(
+                type=parsed["type"],
+                description=parsed["description"],
+                tags=parsed["tags"],
+                duration=parsed["duration"],
+                completable=parsed["completable"],
+                recurrence_days=parsed["recurrence_days"],
+                due_date=parsed["due_date"],
             )
+
+            # Build output message
+            msg = f"Added activity {activity_id}: \\[{parsed['type']}] {parsed['description']}"
+            if parsed["tags"]:
+                tag_str = " ".join(f"#{tag}" for tag in parsed["tags"])
+                msg += f" {tag_str}"
+            if parsed["duration"]:
+                msg += f" ({parsed['duration']})"
+            if parsed["completable"]:
+                msg += " [completable]"
+            if parsed["recurrence_days"]:
+                msg += f" [recurring: {parsed['recurrence_days']} days]"
+            if parsed["due_date"]:
+                msg += f" [due: {parsed['due_date']}]"
+
+            console.print(msg)
         except ValueError as e:
             console.print(f"[red]✗ Error:[/red] {e}")
-            return
-
-        # Build output message
-        msg = f"Added activity {activity_id}: \\[{activity_type}] {description}"
-        if tags:
-            tag_str = " ".join(f"#{tag}" for tag in tags)
-            msg += f" {tag_str}"
-        if duration:
-            msg += f" ({duration})"
-        if completable:
-            msg += " [completable]"
-        if recurrence_days:
-            msg += f" [recurring: {recurrence_days} days]"
-        if due_date:
-            msg += f" [due: {due_date}]"
-
-        console.print(msg)
 
     elif command == "remove":
-        from im_bored.db import delete_activity, get_activity_by_id
-
-        activity = get_activity_by_id(args.index)
-        if not activity:
-            console.print(f"✗ Activity ID {args.index} not found")
-            return
-
-        delete_activity(args.index)
-        console.print(f"✓ Removed activity {args.index}: {activity['description']}")
+        try:
+            activity = services.get_activity_details(args.index)
+            services.remove_activity(args.index)
+            console.print(f"✓ Removed activity {args.index}: {activity['description']}")
+        except ValueError as e:
+            console.print(f"[red]✗ Error:[/red] {e}")
 
     elif command == "archive":
-        from im_bored.db import archive_activity, get_activity_by_id
-
-        activity = get_activity_by_id(args.index)
-        if not activity:
-            console.print(f"✗ Activity ID {args.index} not found")
-            return
-
-        if activity.get("archived"):
-            console.print(f"Activity {args.index} is already archived")
-            return
-
-        archive_activity(args.index)
-        console.print(f"✓ Archived activity {args.index}: {activity['description']}")
+        try:
+            activity = services.get_activity_details(args.index)
+            services.archive_activity(args.index)
+            console.print(f"✓ Archived activity {args.index}: {activity['description']}")
+        except ValueError as e:
+            console.print(f"[red]✗ Error:[/red] {e}")
 
     elif command == "unarchive":
-        from im_bored.db import unarchive_activity, get_activity_by_id
+        try:
+            activity = services.get_activity_details(args.index)
+            services.unarchive_activity(args.index)
+            console.print(f"✓ Unarchived activity {args.index}: {activity['description']}")
+        except ValueError as e:
+            console.print(f"[red]✗ Error:[/red] {e}")
 
-        activity = get_activity_by_id(args.index)
-        if not activity:
-            console.print(f"✗ Activity ID {args.index} not found")
-            return
-
-        if not activity.get("archived"):
-            console.print(f"Activity {args.index} is not archived")
-            return
-
-        unarchive_activity(args.index)
-        console.print(f"✓ Unarchived activity {args.index}: {activity['description']}")
     elif command == "activities":
-        from im_bored.db import get_tags_for_activity
-
         console.print("")
 
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM activities ORDER BY id")
-            activities = [dict(row) for row in cursor.fetchall()]
+        # Build filters from args
+        filters = {}
+        if args.type:
+            # For multiple types, we'll filter after getting all activities
+            filters["type"] = args.type[0] if len(args.type) == 1 else None
+        if args.tags:
+            filters["tags"] = args.tags
+        if args.duration:
+            # For multiple durations, we'll filter after getting all activities
+            filters["duration"] = args.duration[0] if len(args.duration) == 1 else None
+        if args.completed:
+            filters["completed_only"] = True
+
+        # Get activities from services layer
+        activities = services.list_activities(
+            filters=filters if filters else None,
+            show_archived=args.show_archived
+        )
 
         # Filter out completed one-off completable activities
         activities = [
@@ -522,34 +400,11 @@ def main():
             )
         ]
 
-        # Filter out archived activities unless --show-archived is set
-        if not args.show_archived:
-            activities = [a for a in activities if not a.get("archived")]
-
-        # Fetch tags for each activity
-        for activity in activities:
-            activity["tags"] = get_tags_for_activity(activity["id"])
-
-        # Filter by completion status if specified
-        if args.completed:
-            activities = [a for a in activities if a["completed"] == 1]
-
-        # Filter by types if specified
-        if args.type:
+        # Additional filtering for multiple types or durations
+        if args.type and len(args.type) > 1:
             activities = [a for a in activities if a["type"] in args.type]
 
-        # Filter by tags if specified
-        if args.tags:
-            # Convert tag names to lowercase for case-insensitive comparison
-            filter_tag_names = [tag.lower() for tag in args.tags]
-            activities = [
-                a
-                for a in activities
-                if any(tag["name"].lower() in filter_tag_names for tag in a["tags"])
-            ]
-
-        # Filter by duration if specified
-        if args.duration:
+        if args.duration and len(args.duration) > 1:
             activities = [a for a in activities if a.get("duration") in args.duration]
 
         grouped_data = {}
@@ -578,38 +433,25 @@ def main():
         console.print()
 
     elif command == "todo":
-        from im_bored.db import get_tags_for_activity
-
         console.print("")
 
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            # Only get incomplete completable activities that are not archived
-            cursor.execute(
-                "SELECT * FROM activities WHERE completed = 0 AND completable = 1 AND archived = 0 ORDER BY id"
-            )
-            activities = [dict(row) for row in cursor.fetchall()]
-
-        # Fetch tags for each activity
-        for activity in activities:
-            activity["tags"] = get_tags_for_activity(activity["id"])
-
-        # Filter by types if specified
+        # Build filters from args
+        filters = {}
         if args.type:
+            filters["type"] = args.type[0] if len(args.type) == 1 else None
+        if args.tags:
+            filters["tags"] = args.tags
+        if args.duration:
+            filters["duration"] = args.duration[0] if len(args.duration) == 1 else None
+
+        # Get todos from services layer
+        activities = services.list_todos(filters=filters if filters else None)
+
+        # Additional filtering for multiple types or durations
+        if args.type and len(args.type) > 1:
             activities = [a for a in activities if a["type"] in args.type]
 
-        # Filter by tags if specified
-        if args.tags:
-            # Convert tag names to lowercase for case-insensitive comparison
-            filter_tag_names = [tag.lower() for tag in args.tags]
-            activities = [
-                a
-                for a in activities
-                if any(tag["name"].lower() in filter_tag_names for tag in a["tags"])
-            ]
-
-        # Filter by duration if specified
-        if args.duration:
+        if args.duration and len(args.duration) > 1:
             activities = [a for a in activities if a.get("duration") in args.duration]
 
         grouped_data = {}
@@ -638,9 +480,7 @@ def main():
         console.print()
 
     elif command == "categories":
-        from im_bored.db import get_all_types
-
-        categories = get_all_types()
+        categories = services.list_categories()
         if categories:
             console.print("\n[bold cyan]Available Categories:[/bold cyan]")
             for category in categories:
@@ -650,12 +490,10 @@ def main():
             console.print("No categories found.")
 
     elif command == "tags":
-        from im_bored.db import get_all_tags, create_tag, get_tag_by_name, delete_tag
-
         tags_command = args.tags_command
 
         if tags_command == "list" or tags_command is None:
-            tags = get_all_tags()
+            tags = services.list_tags()
             if tags:
                 console.print("\n[bold cyan]Available Tags:[/bold cyan]")
                 table = Table(show_header=True, box=None, header_style="cyan")
@@ -671,35 +509,23 @@ def main():
                 console.print("No tags found.")
 
         elif tags_command == "create":
-            tag_id = create_tag(args.name)
+            tag_id = services.create_tag(args.name)
             console.print(f"✓ Created tag: #{args.name} (ID: {tag_id})")
 
         elif tags_command == "delete":
-            tag = get_tag_by_name(args.name)
-            if tag:
-                if delete_tag(tag["id"]):
-                    console.print(f"✓ Deleted tag: #{args.name}")
-                else:
-                    console.print(f"✗ Failed to delete tag: #{args.name}")
-            else:
-                console.print(f"✗ Tag not found: #{args.name}")
+            try:
+                services.delete_tag(args.name)
+                console.print(f"✓ Deleted tag: #{args.name}")
+            except ValueError as e:
+                console.print(f"[red]✗ Error:[/red] {e}")
 
     elif command == "vibes":
-        from im_bored.db import (
-            get_all_vibes,
-            create_vibe,
-            get_vibe_by_name,
-            delete_vibe,
-            update_vibe,
-            get_all_tags,
-            get_tag_by_name,
-        )
         from rich.prompt import Prompt
 
         vibes_command = args.vibes_command
 
         if vibes_command == "list" or vibes_command is None:
-            vibes = get_all_vibes()
+            vibes = services.list_vibes()
             if vibes:
                 console.print("\n[bold cyan]Available Vibes:[/bold cyan]")
                 for vibe in vibes:
@@ -715,7 +541,7 @@ def main():
 
         elif vibes_command == "create":
             # Get all tags for selection
-            all_tags = get_all_tags()
+            all_tags = services.list_tags()
             if not all_tags:
                 console.print(
                     "✗ No tags available. Create some tags first with 'imbored tag create <name>'"
@@ -736,17 +562,17 @@ def main():
             )
             tag_input = Prompt.ask("Tags")
 
-            # Parse tag input
-            selected_tag_ids = []
+            # Parse tag input - collect tag names instead of IDs
+            selected_tag_names = []
             for item in tag_input.split(","):
                 item = item.strip()
                 if item.startswith("#"):
                     # Tag name
                     tag_name = item[1:]
-                    tag = get_tag_by_name(tag_name)
-                    if tag:
-                        selected_tag_ids.append(tag["id"])
-                    else:
+                    try:
+                        services.get_tag_details(tag_name)
+                        selected_tag_names.append(tag_name)
+                    except ValueError:
                         console.print(
                             f"[yellow]Warning: Tag '{item}' not found, skipping[/yellow]"
                         )
@@ -754,30 +580,31 @@ def main():
                     # Tag number
                     idx = int(item) - 1
                     if 0 <= idx < len(all_tags):
-                        selected_tag_ids.append(all_tags[idx]["id"])
+                        selected_tag_names.append(all_tags[idx]["name"])
                     else:
                         console.print(
                             f"[yellow]Warning: Invalid tag number {item}, skipping[/yellow]"
                         )
 
-            if selected_tag_ids:
-                vibe_id = create_vibe(args.name, description, selected_tag_ids)
-                tag_names = [
-                    tag["name"] for tag in all_tags if tag["id"] in selected_tag_ids
-                ]
-                tag_str = ", ".join(f"#{name}" for name in tag_names)
-                console.print(f"\n✓ Created vibe: {args.name} with tags: {tag_str}")
+            if selected_tag_names:
+                try:
+                    vibe_id = services.create_vibe(args.name, description, selected_tag_names)
+                    tag_str = ", ".join(f"#{name}" for name in selected_tag_names)
+                    console.print(f"\n✓ Created vibe: {args.name} with tags: {tag_str}")
+                except ValueError as e:
+                    console.print(f"[red]✗ Error:[/red] {e}")
             else:
                 console.print("✗ No valid tags selected. Vibe not created.")
 
         elif vibes_command == "edit":
-            vibe = get_vibe_by_name(args.name)
-            if not vibe:
+            try:
+                vibe = services.get_vibe_details(args.name)
+            except ValueError:
                 console.print(f"✗ Vibe not found: {args.name}")
                 return
 
             # Get all tags for selection
-            all_tags = get_all_tags()
+            all_tags = services.list_tags()
             current_tag_names = {tag["name"] for tag in vibe["tags"]}
 
             # Show available tags with current selection marked
@@ -798,85 +625,59 @@ def main():
                 console.print("No changes made.")
                 return
 
-            # Parse tag input
-            selected_tag_ids = []
+            # Parse tag input - collect tag names
+            selected_tag_names = []
             for item in tag_input.split(","):
                 item = item.strip()
                 if item.startswith("#"):
                     # Tag name
                     tag_name = item[1:]
-                    tag = get_tag_by_name(tag_name)
-                    if tag:
-                        selected_tag_ids.append(tag["id"])
+                    try:
+                        services.get_tag_details(tag_name)
+                        selected_tag_names.append(tag_name)
+                    except ValueError:
+                        pass  # Skip invalid tags
                 elif item.isdigit():
                     # Tag number
                     idx = int(item) - 1
                     if 0 <= idx < len(all_tags):
-                        selected_tag_ids.append(all_tags[idx]["id"])
+                        selected_tag_names.append(all_tags[idx]["name"])
 
-            if selected_tag_ids:
-                update_vibe(
-                    vibe["id"],
-                    vibe["name"],
-                    vibe.get("description", ""),
-                    selected_tag_ids,
-                )
-                tag_names = [
-                    tag["name"] for tag in all_tags if tag["id"] in selected_tag_ids
-                ]
-                tag_str = ", ".join(f"#{name}" for name in tag_names)
-                console.print(f"\n✓ Updated vibe: {args.name} with tags: {tag_str}")
+            if selected_tag_names:
+                try:
+                    services.update_vibe(args.name, tag_names=selected_tag_names)
+                    tag_str = ", ".join(f"#{name}" for name in selected_tag_names)
+                    console.print(f"\n✓ Updated vibe: {args.name} with tags: {tag_str}")
+                except ValueError as e:
+                    console.print(f"[red]✗ Error:[/red] {e}")
             else:
                 console.print("✗ No valid tags selected.")
 
         elif vibes_command == "delete":
-            vibe = get_vibe_by_name(args.name)
-            if vibe:
-                if delete_vibe(vibe["id"]):
-                    console.print(f"✓ Deleted vibe: {args.name}")
-                else:
-                    console.print(f"✗ Failed to delete vibe: {args.name}")
-            else:
-                console.print(f"✗ Vibe not found: {args.name}")
+            try:
+                services.delete_vibe(args.name)
+                console.print(f"✓ Deleted vibe: {args.name}")
+            except ValueError as e:
+                console.print(f"[red]✗ Error:[/red] {e}")
 
     elif command == "log":
-        from im_bored.db import (
-            get_activity_by_id,
-            log_decision_event,
-            update_activity_completion,
-        )
-        import uuid
+        try:
+            activity = services.get_activity_details(args.activity_id)
+            services.log_activity_completion(args.activity_id)
 
-        # Get the activity
-        activity = get_activity_by_id(args.activity_id)
-        if not activity:
-            console.print(f"✗ Activity ID {args.activity_id} not found")
-            return
-
-        # Log the decision event
-        session_id = str(uuid.uuid4())
-        log_decision_event(
-            activity_id=activity["id"],
-            outcome="COMPLETED",  # Only log completed activities
-            vibe_id=None,  # No vibe for manual logs
-            filter_tags=None,
-            session_id=session_id,
-        )
-
-        # Only mark as completed if it's a completable activity
-        if activity["completable"]:
-            update_activity_completion(activity["id"], True)
-            console.print(
-                f"[green]✓[/green] Completed and removed from to-do list: [{activity['type']}] {activity['description']}"
-            )
-        else:
-            console.print(
-                f"[green]✓[/green] Logged [{activity['type']}] {activity['description']} as completed"
-            )
+            # Show appropriate message based on activity type
+            if activity["completable"]:
+                console.print(
+                    f"[green]✓[/green] Completed and removed from to-do list: [{activity['type']}] {activity['description']}"
+                )
+            else:
+                console.print(
+                    f"[green]✓[/green] Logged [{activity['type']}] {activity['description']} as completed"
+                )
+        except ValueError as e:
+            console.print(f"[red]✗ Error:[/red] {e}")
 
     elif command == "stats":
-        from im_bored.db import get_decision_stats, clear_all_decision_events
-
         # Handle reset flag
         if args.reset:
             from rich.prompt import Confirm
@@ -884,13 +685,13 @@ def main():
             if Confirm.ask(
                 "[yellow]Are you sure you want to clear ALL statistics? This cannot be undone.[/yellow]"
             ):
-                count = clear_all_decision_events()
+                count = services.reset_stats()
                 console.print(f"[green]✓ Cleared {count} decision events[/green]")
             else:
                 console.print("Cancelled.")
             return
 
-        stats = get_decision_stats(days=args.days)
+        stats = services.get_stats(days=args.days)
 
         console.print(
             f"\n[bold cyan]Activity Log{" (Last {stats['days']} days)" if args.days is not None else ""}[/bold cyan]\n"
@@ -927,115 +728,93 @@ def main():
             )
 
     elif args.command == "complete":
-        from im_bored.db import update_activity_completion, get_activity_by_id
-
-        activity = get_activity_by_id(args.index)
-        if not activity:
-            console.print(f"✗ Activity ID {args.index} not found")
-            return
-
-        update_activity_completion(args.index, True)
-        console.print(
-            f"✓ Marked activity {args.index} as complete: {activity['description']}"
-        )
+        try:
+            activity = services.get_activity_details(args.index)
+            services.complete_activity(args.index)
+            console.print(
+                f"✓ Marked activity {args.index} as complete: {activity['description']}"
+            )
+        except ValueError as e:
+            console.print(f"[red]✗ Error:[/red] {e}")
 
     elif args.command == "incomplete":
-        from im_bored.db import update_activity_completion, get_activity_by_id
-
-        activity = get_activity_by_id(args.index)
-        if not activity:
-            console.print(f"✗ Activity ID {args.index} not found")
-            return
-
-        update_activity_completion(args.index, False)
-        console.print(
-            f"Marked activity {args.index} as incomplete: {activity['description']}"
-        )
+        try:
+            activity = services.get_activity_details(args.index)
+            services.uncomplete_activity(args.index)
+            console.print(
+                f"Marked activity {args.index} as incomplete: {activity['description']}"
+            )
+        except ValueError as e:
+            console.print(f"[red]✗ Error:[/red] {e}")
 
     elif command == "random":
-        # Random command - pick a random activity with filtering
-        from im_bored.db import (
-            get_random_uncompleted_activity_filtered,
-            get_tag_by_name,
-            get_vibe_by_name,
-        )
-
         # Prepare filters
-        activity_types = [args.type] if args.type else None
-        duration = args.duration if args.duration else None
-
-        # Parse vibe name to vibe ID
-        vibe_id = None
-        if args.vibe:
-            vibe = get_vibe_by_name(args.vibe)
-            if vibe:
-                vibe_id = vibe["id"]
-                console.print(f"[dim cyan]Applying vibe: {args.vibe}[/dim cyan]")
-            else:
-                console.print(f"[yellow]Warning: Vibe '{args.vibe}' not found[/yellow]")
-
-        # Parse tag names to tag IDs
-        tag_ids = None
+        filters = {}
+        if args.type:
+            filters["types"] = [args.type]
+        if args.duration:
+            filters["duration"] = args.duration
         if args.tags:
-            tag_names = [t.strip() for t in args.tags.split(",")]
-            tag_ids = []
-            for tag_name in tag_names:
-                tag = get_tag_by_name(tag_name)
-                if tag:
-                    tag_ids.append(tag["id"])
-                else:
-                    console.print(
-                        f"[yellow]Warning: Tag '#{tag_name}' not found, ignoring[/yellow]"
-                    )
-            if not tag_ids:
-                tag_ids = None
+            filters["tags"] = [t.strip() for t in args.tags.split(",")]
+
+        vibe_name = args.vibe if args.vibe else None
+        if vibe_name:
+            console.print(f"[dim cyan]Applying vibe: {vibe_name}[/dim cyan]")
 
         # Get random activity
-        choice = get_random_uncompleted_activity_filtered(
-            activity_types=activity_types,
-            tag_ids=tag_ids,
-            duration=duration,
-            vibe_id=vibe_id,
-        )
-
-        if choice:
-            panel = Panel(
-                f"\n[cyan]({choice['type']})[/cyan]\n\n[bold]{choice['description']}[/bold]",
-                title="How about you...",
-                border_style="green",
-                subtitle="?",
-                subtitle_align="right",
-                expand=False,
+        try:
+            choice = services.get_random_activity(
+                filters=filters if filters else None,
+                vibe_name=vibe_name
             )
-
-            console.print()
-            console.print(panel)
-            console.print()
-        else:
+        except ValueError as e:
             # Build filter message
-            filters = []
+            filter_parts = []
             if args.type:
-                filters.append(f"type '{args.type}'")
-            if duration:
-                filters.append(f"duration '{duration}'")
+                filter_parts.append(f"type '{args.type}'")
+            if args.duration:
+                filter_parts.append(f"duration '{args.duration}'")
             if args.tags:
-                filters.append(f"tags '{args.tags}'")
+                filter_parts.append(f"tags '{args.tags}'")
 
-            filter_msg = " with " + ", ".join(filters) if filters else ""
+            filter_msg = " with " + ", ".join(filter_parts) if filter_parts else ""
             console.print(
                 f"No uncompleted activities found{filter_msg}. Add some with 'imbored add \"[type] activity\"'"
             )
+            return
+
+        # Display the choice
+        panel = Panel(
+            f"\n[cyan]({choice['type']})[/cyan]\n\n[bold]{choice['description']}[/bold]",
+            title="How about you...",
+            border_style="green",
+            subtitle="?",
+            subtitle_align="right",
+            expand=False,
+        )
+
+        console.print()
+        console.print(panel)
+        console.print()
 
     else:
         # Default imbored command - list all activities (excluding to-do)
-        from im_bored.db import get_tags_for_activity
-
         console.print("")
 
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM activities ORDER BY id")
-            activities = [dict(row) for row in cursor.fetchall()]
+        # Build filters from args
+        filters = {}
+        if args.type:
+            filters["type"] = args.type
+        if args.tags:
+            filters["tags"] = [t.strip() for t in args.tags.split(",")]
+        if args.duration:
+            filters["duration"] = args.duration
+
+        # Get activities from services layer
+        activities = services.list_activities(
+            filters=filters if filters else None,
+            show_archived=args.show_archived
+        )
 
         # Filter out completed one-off completable activities
         activities = [
@@ -1046,51 +825,18 @@ def main():
             )
         ]
 
-        # Filter out archived activities unless --show-archived is set
-        if not args.show_archived:
-            activities = [a for a in activities if not a.get("archived")]
-
-        # Fetch tags for each activity
-        for activity in activities:
-            activity["tags"] = get_tags_for_activity(activity["id"])
-
-        # Filter by types if specified
-        if args.type:
-            activities = [a for a in activities if a["type"] == args.type]
-
-        # Parse tag names to list for filtering
-        filter_tags = None
-        if args.tags:
-            filter_tags = [t.strip() for t in args.tags.split(",")]
-
-        # Filter by tags if specified
-        if filter_tags:
-            # Convert tag names to lowercase for case-insensitive comparison
-            filter_tag_names = [tag.lower() for tag in filter_tags]
-            activities = [
-                a
-                for a in activities
-                if any(tag["name"].lower() in filter_tag_names for tag in a["tags"])
-            ]
-
-        # Filter by duration if specified
-        if args.duration:
-            activities = [a for a in activities if a.get("duration") == args.duration]
-
-        # Parse vibe and apply its tag filter
+        # Apply vibe filter if specified
         if args.vibe:
-            from im_bored.db import get_vibe_by_name
-
-            vibe = get_vibe_by_name(args.vibe)
-            if vibe:
+            try:
+                vibe = services.get_vibe_details(args.vibe)
                 console.print(f"[dim cyan]Applying vibe: {args.vibe}[/dim cyan]\n")
-                vibe_tag_names = [tag["name"].lower() for tag in vibe["tags"]]
+                vibe_tag_names = {tag["name"].lower() for tag in vibe["tags"]}
                 activities = [
                     a
                     for a in activities
                     if any(tag["name"].lower() in vibe_tag_names for tag in a["tags"])
                 ]
-            else:
+            except ValueError:
                 console.print(
                     f"[yellow]Warning: Vibe '{args.vibe}' not found[/yellow]\n"
                 )
