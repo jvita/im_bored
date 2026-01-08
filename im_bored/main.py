@@ -20,8 +20,8 @@ def parse_activity(activity: str) -> dict:
     Hashtags are extracted as tags
     --duration flag specifies duration
     --completable flag marks this as a one-off to-do activity
-    --recurring flag specifies recurrence period (requires --completable)
-    --due flag specifies due date (requires --completable)
+    --recurring flag specifies recurrence period
+    --due flag specifies due date
     """
     from im_bored.db import parse_tags_from_description, parse_recurrence_to_days
 
@@ -47,8 +47,7 @@ def parse_activity(activity: str) -> dict:
     recurrence_days = None
     recurrence_warning = None
     if recurring_match:
-        if not completable:
-            raise ValueError("--recurring requires --completable flag")
+        completable = True
         recurrence_str = recurring_match.group(1)
         recurrence_days, recurrence_warning = parse_recurrence_to_days(recurrence_str)
         remaining = remaining.replace(recurring_match.group(0), "").strip()
@@ -57,17 +56,19 @@ def parse_activity(activity: str) -> dict:
     due_match = re.search(r"--due\s+(\S+)", remaining)
     due_date = None
     if due_match:
-        if not completable:
-            raise ValueError("--due requires --completable flag")
+        completable = True
         if recurrence_days is not None:
             raise ValueError("Cannot use both --recurring and --due flags")
         due_date = due_match.group(1)
         # Validate date format (basic check)
         try:
             from datetime import datetime
+
             datetime.fromisoformat(due_date)
         except ValueError:
-            raise ValueError(f"Invalid date format: {due_date}. Use ISO format like 2026-01-15")
+            raise ValueError(
+                f"Invalid date format: {due_date}. Use ISO format like 2026-01-15"
+            )
         remaining = remaining.replace(due_match.group(0), "").strip()
 
     # Extract duration flag
@@ -248,7 +249,9 @@ def main():
         "index", type=int, help="The ID of the activity to remove"
     )
 
-    archive_parser = subparser.add_parser("archive", help="Archive an activity (hides from default view, keeps history)")
+    archive_parser = subparser.add_parser(
+        "archive", help="Archive an activity (hides from default view, keeps history)"
+    )
     archive_parser.add_argument(
         "index", type=int, help="The ID of the activity to archive"
     )
@@ -319,7 +322,9 @@ def main():
         "--vibe", type=str, help="Filter activities by vibe (for default command)"
     )
     parser.add_argument(
-        "--show-archived", action="store_true", help="Show archived activities (for default command)"
+        "--show-archived",
+        action="store_true",
+        help="Show archived activities (for default command)",
     )
 
     # Stats command
@@ -337,9 +342,7 @@ def main():
 
     # Random command - pick a random activity with filtering
     random_parser = subparser.add_parser("random", help="Pick a random activity")
-    random_parser.add_argument(
-        "--type", type=str, help="Filter activities by type"
-    )
+    random_parser.add_argument("--type", type=str, help="Filter activities by type")
     random_parser.add_argument(
         "--duration",
         type=str,
@@ -350,9 +353,7 @@ def main():
         type=str,
         help="Filter activities by tags (comma-separated)",
     )
-    random_parser.add_argument(
-        "--vibe", type=str, help="Filter activities by vibe"
-    )
+    random_parser.add_argument("--vibe", type=str, help="Filter activities by vibe")
 
     # Log command - manually log an activity as completed
     log_parser = subparser.add_parser(
@@ -398,15 +399,20 @@ def main():
         # Add activity with tags
         try:
             activity_id = add_activity_with_tags(
-                activity_type, description, tags, duration, completable,
-                recurrence_days, due_date
+                activity_type,
+                description,
+                tags,
+                duration,
+                completable,
+                recurrence_days,
+                due_date,
             )
         except ValueError as e:
             console.print(f"[red]✗ Error:[/red] {e}")
             return
 
         # Build output message
-        msg = f"Added activity: \\[{activity_type}] {description}"
+        msg = f"Added activity {activity_id}: \\[{activity_type}] {description}"
         if tags:
             tag_str = " ".join(f"#{tag}" for tag in tags)
             msg += f" {tag_str}"
@@ -473,8 +479,11 @@ def main():
 
         # Filter out completed one-off completable activities
         activities = [
-            a for a in activities
-            if not (a.get("completable") and a["completed"] and not a.get("recurrence_days"))
+            a
+            for a in activities
+            if not (
+                a.get("completable") and a["completed"] and not a.get("recurrence_days")
+            )
         ]
 
         # Filter out archived activities unless --show-archived is set
@@ -994,8 +1003,11 @@ def main():
 
         # Filter out completed one-off completable activities
         activities = [
-            a for a in activities
-            if not (a.get("completable") and a["completed"] and not a.get("recurrence_days"))
+            a
+            for a in activities
+            if not (
+                a.get("completable") and a["completed"] and not a.get("recurrence_days")
+            )
         ]
 
         # Filter out archived activities unless --show-archived is set
@@ -1043,7 +1055,9 @@ def main():
                     if any(tag["name"].lower() in vibe_tag_names for tag in a["tags"])
                 ]
             else:
-                console.print(f"[yellow]Warning: Vibe '{args.vibe}' not found[/yellow]\n")
+                console.print(
+                    f"[yellow]Warning: Vibe '{args.vibe}' not found[/yellow]\n"
+                )
 
         grouped_data = {}
         for activity in activities:
