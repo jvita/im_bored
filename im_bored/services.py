@@ -4,7 +4,7 @@ This module provides a clean, interface-agnostic API for all business logic oper
 Functions in this module are designed to be easily wrappable by FastMCP or other interfaces.
 """
 
-from typing import Any
+from typing import Annotated, Any
 from im_bored import db
 
 
@@ -14,30 +14,16 @@ from im_bored import db
 
 
 def add_activity(
-    type: str,
-    description: str,
-    tags: list[str] | None = None,
-    duration: str | None = None,
-    completable: bool = False,
-    recurrence_days: int | None = None,
-    due_date: str | None = None,
-    archived: bool = False,
+    type: Annotated[str, "Activity type/category (e.g., 'read', 'exercise', 'cook', 'general'). Can be any string."],
+    description: Annotated[str, "Clear, specific description of the activity (e.g., 'Read \"Project Hail Mary\" by Andy Weir')"],
+    tags: Annotated[list[str] | None, "Optional list of tag names for filtering (e.g., ['cozy', 'indoor', 'active']). Do not include # symbols."] = None,
+    duration: Annotated[str | None, "Optional time estimate. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Use this to filter by available time."] = None,
+    completable: Annotated[bool, "Set to True for todo items that should be marked done when finished. Set to False for repeatable activities."] = False,
+    recurrence_days: Annotated[int | None, "For recurring tasks only. Number of days between occurrences (e.g., 7 for weekly, 30 for monthly)."] = None,
+    due_date: Annotated[str | None, "Due date in ISO format YYYY-MM-DD (e.g., '2026-01-15'). Only for tasks with specific deadlines."] = None,
+    archived: Annotated[bool, "Set to True to create as archived (hidden from default views but kept in database)."] = False,
 ) -> int:
-    """Add a new activity to the database. Use this to create activities users can do when bored, or to add tasks to their todo list.
-
-    Parameters:
-        type: Activity type/category (e.g., 'read', 'exercise', 'cook', 'general'). Can be any string.
-        description: Clear, specific description of the activity (e.g., 'Read "Project Hail Mary" by Andy Weir')
-        tags: Optional list of tag names for filtering (e.g., ['cozy', 'indoor', 'active']). Do not include # symbols.
-        duration: Optional time estimate. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Use this to filter by available time.
-        completable: Set to True for todo items that should be marked done when finished. Set to False for repeatable activities.
-        recurrence_days: For recurring tasks only. Number of days between occurrences (e.g., 7 for weekly, 30 for monthly).
-        due_date: Due date in ISO format YYYY-MM-DD (e.g., '2026-01-15'). Only for tasks with specific deadlines.
-        archived: Set to True to create as archived (hidden from default views but kept in database).
-
-    Returns:
-        The ID of the newly created activity (integer). Use this ID to complete, archive, or delete the activity later.
-    """
+    """Add a new activity to the database. Use this to create activities users can do when bored, or to add tasks to their todo list."""
     if recurrence_days is not None and due_date is not None:
         raise ValueError("Cannot use both recurrence_days and due_date")
 
@@ -62,26 +48,14 @@ def add_activity(
 
 
 def list_activities(
-    type: str | None = None,
-    tags: list[str] | None = None,
-    duration: str | None = None,
-    completable_only: bool = False,
-    completed_only: bool = False,
-    show_archived: bool = False,
+    type: Annotated[str | None, "Filter to a single activity type (e.g., 'read', 'exercise'). Leave None for all types."] = None,
+    tags: Annotated[list[str] | None, "Filter to activities that have ALL of these tags (e.g., ['indoor', 'cozy']). Leave None for no tag filtering."] = None,
+    duration: Annotated[str | None, "Filter by time duration. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration."] = None,
+    completable_only: Annotated[bool, "If True, only show todo items (completable activities). If False, show all activities."] = False,
+    completed_only: Annotated[bool, "If True, only show completed activities. If False and completable_only is True, shows incomplete todos."] = False,
+    show_archived: Annotated[bool, "If True, include archived activities in results. If False, hide archived activities."] = False,
 ) -> list[dict]:
-    """Get all activities with optional filtering. Use this to browse available activities or see what the user has logged. By default, returns all non-archived activities.
-
-    Parameters:
-        type: Filter to a single activity type (e.g., 'read', 'exercise'). Leave None for all types.
-        tags: Filter to activities that have ALL of these tags (e.g., ['indoor', 'cozy']). Leave None for no tag filtering.
-        duration: Filter by time duration. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration.
-        completable_only: If True, only show todo items (completable activities). If False, show all activities.
-        completed_only: If True, only show completed activities. If False and completable_only is True, shows incomplete todos.
-        show_archived: If True, include archived activities in results. If False, hide archived activities.
-
-    Returns:
-        List of activity dictionaries with keys: id, type, description, completed, completable, duration, recurrence_days, due_date, next_due_date, archived, created_at, updated_at, and tags (list of tag dicts).
-    """
+    """Get all activities with optional filtering. Use this to browse available activities or see what the user has logged. By default, returns all non-archived activities."""
     # Build filters dict for internal use
     filters: dict[str, Any] = {}
     if type:
@@ -172,7 +146,7 @@ def list_activities(
 def get_activity_details(activity_id: int) -> dict:
     """Get full details for a specific activity.
 
-    Args:
+    Parameters:
         activity_id: The activity ID
 
     Returns:
@@ -194,7 +168,7 @@ def get_activity_details(activity_id: int) -> dict:
 def remove_activity(activity_id: int) -> None:
     """Permanently delete an activity.
 
-    Args:
+    Parameters:
         activity_id: The activity ID to delete
 
     Raises:
@@ -210,7 +184,7 @@ def remove_activity(activity_id: int) -> None:
 def archive_activity(activity_id: int) -> None:
     """Archive an activity (hide from default views).
 
-    Args:
+    Parameters:
         activity_id: The activity ID to archive
 
     Raises:
@@ -229,7 +203,7 @@ def archive_activity(activity_id: int) -> None:
 def unarchive_activity(activity_id: int) -> None:
     """Restore an archived activity.
 
-    Args:
+    Parameters:
         activity_id: The activity ID to unarchive
 
     Raises:
@@ -251,20 +225,11 @@ def unarchive_activity(activity_id: int) -> None:
 
 
 def list_todos(
-    type: str | None = None,
-    tags: list[str] | None = None,
-    duration: str | None = None,
+    type: Annotated[str | None, "Filter to a single activity type (e.g., 'read', 'chores'). Leave None for all types."] = None,
+    tags: Annotated[list[str] | None, "Filter to todos that have ALL of these tags (e.g., ['urgent', 'home']). Leave None for no tag filtering."] = None,
+    duration: Annotated[str | None, "Filter by time estimate. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration."] = None,
 ) -> list[dict]:
-    """Get incomplete completable activities (todo list). Returns the user's active todo list - tasks marked as completable that haven't been completed yet.
-
-    Parameters:
-        type: Filter to a single activity type (e.g., 'read', 'chores'). Leave None for all types.
-        tags: Filter to todos that have ALL of these tags (e.g., ['urgent', 'home']). Leave None for no tag filtering.
-        duration: Filter by time estimate. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration.
-
-    Returns:
-        List of incomplete todo item dictionaries with the same structure as list_activities. These are activities where completable=True and completed=False.
-    """
+    """Get incomplete completable activities (todo list). Returns the user's active todo list - tasks marked as completable that haven't been completed yet."""
     return list_activities(
         type=type,
         tags=tags,
@@ -280,7 +245,7 @@ def complete_activity(activity_id: int) -> None:
 
     For recurring tasks, this updates the next_due_date.
 
-    Args:
+    Parameters:
         activity_id: The activity ID to mark as complete
 
     Raises:
@@ -296,7 +261,7 @@ def complete_activity(activity_id: int) -> None:
 def uncomplete_activity(activity_id: int) -> None:
     """Mark an activity as incomplete.
 
-    Args:
+    Parameters:
         activity_id: The activity ID to mark as incomplete
 
     Raises:
@@ -312,7 +277,7 @@ def uncomplete_activity(activity_id: int) -> None:
 def log_activity_completion(activity_id: int, vibe_name: str | None = None) -> None:
     """Log manual activity completion with analytics tracking.
 
-    Args:
+    Parameters:
         activity_id: The activity ID to log
         vibe_name: Optional vibe context for analytics
 
@@ -351,34 +316,12 @@ def log_activity_completion(activity_id: int, vibe_name: str | None = None) -> N
 
 
 def get_random_activity(
-    types: list[str] | None = None,
-    tags: list[str] | None = None,
-    duration: str | None = None,
-    vibe_name: str | None = None,
+    types: Annotated[list[str] | None, "Filter to specific activity types (e.g., ['read', 'exercise', 'cook']). Leave None for all types."] = None,
+    tags: Annotated[list[str] | None, "Filter to activities with ALL of these tags (e.g., ['indoor', 'cozy']). Leave None for no tag filtering."] = None,
+    duration: Annotated[str | None, "Filter by time available. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration."] = None,
+    vibe_name: Annotated[str | None, "Apply a vibe filter (uses the vibe's tag preferences). Vibe tags are combined with the tags parameter."] = None,
 ) -> dict:
-    """Get a random uncompleted activity suggestion.
-
-    Returns a random activity that hasn't been completed yet, optionally filtered by criteria.
-    Great for helping users decide what to do when they're bored.
-
-    Args:
-        types: Filter to specific activity types (e.g., ['read', 'exercise', 'cook']). Leave None for all types.
-        tags: Filter to activities with ALL of these tags (e.g., ['indoor', 'cozy']). Leave None for no tag filtering.
-        duration: Filter by time available. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration.
-        vibe_name: Apply a vibe filter (uses the vibe's tag preferences). Vibe tags are combined with the tags parameter.
-
-    Returns:
-        A random activity dictionary with full details including:
-            - id (int): Activity ID
-            - type (str): Activity category
-            - description (str): What to do
-            - tags (list[dict]): Associated tags
-            - duration (str | None): Time estimate
-            - And all other activity fields
-
-    Raises:
-        ValueError: If no matching activities found, or if vibe_name is provided but doesn't exist
-    """
+    """Get a random uncompleted activity suggestion. Returns a random activity that hasn't been completed yet, optionally filtered by criteria. Great for helping users decide what to do when they're bored."""
     # Resolve vibe name to vibe ID and extract tag IDs
     vibe_id = None
     vibe_tag_ids = []
@@ -435,7 +378,7 @@ def list_tags() -> list[dict]:
 def create_tag(name: str) -> int:
     """Create a new tag.
 
-    Args:
+    Parameters:
         name: Tag name
 
     Returns:
@@ -454,7 +397,7 @@ def create_tag(name: str) -> int:
 def delete_tag(name: str) -> None:
     """Delete a tag.
 
-    Args:
+    Parameters:
         name: Tag name to delete
 
     Raises:
@@ -470,7 +413,7 @@ def delete_tag(name: str) -> None:
 def get_tag_details(name: str) -> dict:
     """Get tag details by name.
 
-    Args:
+    Parameters:
         name: Tag name
 
     Returns:
@@ -509,7 +452,7 @@ def list_vibes() -> list[dict]:
 def create_vibe(name: str, description: str, tag_names: list[str]) -> int:
     """Create a new vibe.
 
-    Args:
+    Parameters:
         name: Vibe name
         description: Vibe description
         tag_names: List of tag names to associate with this vibe
@@ -543,7 +486,7 @@ def update_vibe(
 ) -> None:
     """Update a vibe's details.
 
-    Args:
+    Parameters:
         name: Current vibe name
         new_description: Optional new description
         tag_names: Optional new list of tag names
@@ -582,7 +525,7 @@ def update_vibe(
 def delete_vibe(name: str) -> None:
     """Delete a vibe.
 
-    Args:
+    Parameters:
         name: Vibe name to delete
 
     Raises:
@@ -598,7 +541,7 @@ def delete_vibe(name: str) -> None:
 def get_vibe_details(name: str) -> dict:
     """Get vibe details by name.
 
-    Args:
+    Parameters:
         name: Vibe name
 
     Returns:
@@ -640,7 +583,7 @@ def list_categories() -> list[str]:
 def get_stats(days: int | None = None) -> dict:
     """Get activity completion statistics.
 
-    Args:
+    Parameters:
         days: Number of days to analyze (None = all time)
 
     Returns:
