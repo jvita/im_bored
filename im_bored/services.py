@@ -23,11 +23,9 @@ def add_activity(
     due_date: str | None = None,
     archived: bool = False,
 ) -> int:
-    """Add a new activity to the database.
+    """Add a new activity to the database. Use this to create activities users can do when bored, or to add tasks to their todo list.
 
-    Use this to create activities users can do when bored, or to add tasks to their todo list.
-
-    Args:
+    Parameters:
         type: Activity type/category (e.g., 'read', 'exercise', 'cook', 'general'). Can be any string.
         description: Clear, specific description of the activity (e.g., 'Read "Project Hail Mary" by Andy Weir')
         tags: Optional list of tag names for filtering (e.g., ['cozy', 'indoor', 'active']). Do not include # symbols.
@@ -39,9 +37,6 @@ def add_activity(
 
     Returns:
         The ID of the newly created activity (integer). Use this ID to complete, archive, or delete the activity later.
-
-    Raises:
-        ValueError: If both recurrence_days and due_date are specified (cannot have both recurring and fixed due date)
     """
     if recurrence_days is not None and due_date is not None:
         raise ValueError("Cannot use both recurrence_days and due_date")
@@ -74,11 +69,9 @@ def list_activities(
     completed_only: bool = False,
     show_archived: bool = False,
 ) -> list[dict]:
-    """Get all activities with optional filtering.
+    """Get all activities with optional filtering. Use this to browse available activities or see what the user has logged. By default, returns all non-archived activities.
 
-    Use this to browse available activities or see what the user has logged. By default, returns all non-archived activities.
-
-    Args:
+    Parameters:
         type: Filter to a single activity type (e.g., 'read', 'exercise'). Leave None for all types.
         tags: Filter to activities that have ALL of these tags (e.g., ['indoor', 'cozy']). Leave None for no tag filtering.
         duration: Filter by time duration. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration.
@@ -87,20 +80,7 @@ def list_activities(
         show_archived: If True, include archived activities in results. If False, hide archived activities.
 
     Returns:
-        List of activity dictionaries. Each dict contains:
-            - id (int): Activity ID for referencing this activity
-            - type (str): Activity category/type
-            - description (str): Activity description
-            - completed (bool): Whether activity is marked complete
-            - completable (bool): Whether this is a todo item
-            - duration (str | None): Time estimate
-            - recurrence_days (int | None): Days between recurrences for recurring tasks
-            - due_date (str | None): ISO date string for deadline
-            - next_due_date (str | None): Next due date for recurring tasks
-            - archived (bool): Whether activity is archived
-            - created_at (str): ISO timestamp of creation
-            - updated_at (str): ISO timestamp of last update
-            - tags (list[dict]): List of tag dicts, each with 'id' and 'name' keys
+        List of activity dictionaries with keys: id, type, description, completed, completable, duration, recurrence_days, due_date, next_due_date, archived, created_at, updated_at, and tags (list of tag dicts).
     """
     # Build filters dict for internal use
     filters: dict[str, Any] = {}
@@ -275,18 +255,15 @@ def list_todos(
     tags: list[str] | None = None,
     duration: str | None = None,
 ) -> list[dict]:
-    """Get incomplete completable activities (todo list).
+    """Get incomplete completable activities (todo list). Returns the user's active todo list - tasks marked as completable that haven't been completed yet.
 
-    Returns the user's active todo list - tasks marked as completable that haven't been completed yet.
-
-    Args:
+    Parameters:
         type: Filter to a single activity type (e.g., 'read', 'chores'). Leave None for all types.
         tags: Filter to todos that have ALL of these tags (e.g., ['urgent', 'home']). Leave None for no tag filtering.
         duration: Filter by time estimate. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration.
 
     Returns:
-        List of incomplete todo item dictionaries with the same structure as list_activities.
-        These are activities where completable=True and completed=False.
+        List of incomplete todo item dictionaries with the same structure as list_activities. These are activities where completable=True and completed=False.
     """
     return list_activities(
         type=type,
