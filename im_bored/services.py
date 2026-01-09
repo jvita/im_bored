@@ -25,21 +25,23 @@ def add_activity(
 ) -> int:
     """Add a new activity to the database.
 
+    Use this to create activities users can do when bored, or to add tasks to their todo list.
+
     Args:
-        type: Activity type (e.g., 'read', 'exercise', 'cook')
-        description: Activity description
-        tags: Optional list of tag names to associate with the activity
-        duration: Optional duration ('5min', '15min', '30min', '1h', '1h+')
-        completable: Whether this is a completable todo item
-        recurrence_days: Optional recurrence period in days (for recurring tasks)
-        due_date: Optional due date in ISO format (YYYY-MM-DD)
-        archived: Whether the activity should be created as archived
+        type: Activity type/category (e.g., 'read', 'exercise', 'cook', 'general'). Can be any string.
+        description: Clear, specific description of the activity (e.g., 'Read "Project Hail Mary" by Andy Weir')
+        tags: Optional list of tag names for filtering (e.g., ['cozy', 'indoor', 'active']). Do not include # symbols.
+        duration: Optional time estimate. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Use this to filter by available time.
+        completable: Set to True for todo items that should be marked done when finished. Set to False for repeatable activities.
+        recurrence_days: For recurring tasks only. Number of days between occurrences (e.g., 7 for weekly, 30 for monthly).
+        due_date: Due date in ISO format YYYY-MM-DD (e.g., '2026-01-15'). Only for tasks with specific deadlines.
+        archived: Set to True to create as archived (hidden from default views but kept in database).
 
     Returns:
-        int: The ID of the newly created activity
+        The ID of the newly created activity (integer). Use this ID to complete, archive, or delete the activity later.
 
     Raises:
-        ValueError: If both recurrence_days and due_date are specified
+        ValueError: If both recurrence_days and due_date are specified (cannot have both recurring and fixed due date)
     """
     if recurrence_days is not None and due_date is not None:
         raise ValueError("Cannot use both recurrence_days and due_date")
@@ -65,27 +67,53 @@ def add_activity(
 
 
 def list_activities(
-    filters: dict[str, Any] | None = None, show_archived: bool = False
+    type: str | None = None,
+    tags: list[str] | None = None,
+    duration: str | None = None,
+    completable_only: bool = False,
+    completed_only: bool = False,
+    show_archived: bool = False,
 ) -> list[dict]:
     """Get all activities with optional filtering.
 
+    Use this to browse available activities or see what the user has logged. By default, returns all non-archived activities.
+
     Args:
-        filters: Optional dict with keys:
-            - type: str - Filter by activity type
-            - tags: list[str] - Filter by tag names (must have all tags)
-            - duration: str - Filter by duration
-            - completable_only: bool - Show only completable activities
-            - completed_only: bool - Show only completed activities
-        show_archived: Whether to include archived activities
+        type: Filter to a single activity type (e.g., 'read', 'exercise'). Leave None for all types.
+        tags: Filter to activities that have ALL of these tags (e.g., ['indoor', 'cozy']). Leave None for no tag filtering.
+        duration: Filter by time duration. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration.
+        completable_only: If True, only show todo items (completable activities). If False, show all activities.
+        completed_only: If True, only show completed activities. If False and completable_only is True, shows incomplete todos.
+        show_archived: If True, include archived activities in results. If False, hide archived activities.
 
     Returns:
-        list[dict]: List of activity dicts, each containing:
-            - id, type, description, completed, completable, duration,
-            - recurrence_days, due_date, next_due_date, archived,
-            - created_at, updated_at
-            - tags: list of tag dicts
+        List of activity dictionaries. Each dict contains:
+            - id (int): Activity ID for referencing this activity
+            - type (str): Activity category/type
+            - description (str): Activity description
+            - completed (bool): Whether activity is marked complete
+            - completable (bool): Whether this is a todo item
+            - duration (str | None): Time estimate
+            - recurrence_days (int | None): Days between recurrences for recurring tasks
+            - due_date (str | None): ISO date string for deadline
+            - next_due_date (str | None): Next due date for recurring tasks
+            - archived (bool): Whether activity is archived
+            - created_at (str): ISO timestamp of creation
+            - updated_at (str): ISO timestamp of last update
+            - tags (list[dict]): List of tag dicts, each with 'id' and 'name' keys
     """
-    filters = filters or {}
+    # Build filters dict for internal use
+    filters: dict[str, Any] = {}
+    if type:
+        filters["type"] = type
+    if tags:
+        filters["tags"] = tags
+    if duration:
+        filters["duration"] = duration
+    if completable_only:
+        filters["completable_only"] = True
+    if completed_only:
+        filters["completed_only"] = True
 
     # Get all activities from database
     with db.get_db_connection() as conn:
@@ -242,22 +270,32 @@ def unarchive_activity(activity_id: int) -> None:
 # ============================================================================
 
 
-def list_todos(filters: dict[str, Any] | None = None) -> list[dict]:
+def list_todos(
+    type: str | None = None,
+    tags: list[str] | None = None,
+    duration: str | None = None,
+) -> list[dict]:
     """Get incomplete completable activities (todo list).
 
+    Returns the user's active todo list - tasks marked as completable that haven't been completed yet.
+
     Args:
-        filters: Optional dict with keys:
-            - type: str - Filter by activity type
-            - tags: list[str] - Filter by tag names
-            - duration: str - Filter by duration
+        type: Filter to a single activity type (e.g., 'read', 'chores'). Leave None for all types.
+        tags: Filter to todos that have ALL of these tags (e.g., ['urgent', 'home']). Leave None for no tag filtering.
+        duration: Filter by time estimate. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration.
 
     Returns:
-        list[dict]: List of incomplete completable activities
+        List of incomplete todo item dictionaries with the same structure as list_activities.
+        These are activities where completable=True and completed=False.
     """
-    filters = filters or {}
-    filters["completable_only"] = True
-    # completed_only is not set, so list_activities will exclude completed items
-    return list_activities(filters=filters, show_archived=False)
+    return list_activities(
+        type=type,
+        tags=tags,
+        duration=duration,
+        completable_only=True,
+        completed_only=False,
+        show_archived=False
+    )
 
 
 def complete_activity(activity_id: int) -> None:
@@ -294,9 +332,7 @@ def uncomplete_activity(activity_id: int) -> None:
     db.update_activity_completion(activity_id, completed=False)
 
 
-def log_activity_completion(
-    activity_id: int, vibe_name: str | None = None
-) -> None:
+def log_activity_completion(activity_id: int, vibe_name: str | None = None) -> None:
     """Log manual activity completion with analytics tracking.
 
     Args:
@@ -338,25 +374,34 @@ def log_activity_completion(
 
 
 def get_random_activity(
-    filters: dict[str, Any] | None = None, vibe_name: str | None = None
+    types: list[str] | None = None,
+    tags: list[str] | None = None,
+    duration: str | None = None,
+    vibe_name: str | None = None,
 ) -> dict:
-    """Get a random uncompleted activity.
+    """Get a random uncompleted activity suggestion.
+
+    Returns a random activity that hasn't been completed yet, optionally filtered by criteria.
+    Great for helping users decide what to do when they're bored.
 
     Args:
-        filters: Optional dict with keys:
-            - types: list[str] - Filter by activity types
-            - tags: list[str] - Filter by tag names
-            - duration: str - Filter by duration
-        vibe_name: Optional vibe name to apply (uses vibe's tag filters)
+        types: Filter to specific activity types (e.g., ['read', 'exercise', 'cook']). Leave None for all types.
+        tags: Filter to activities with ALL of these tags (e.g., ['indoor', 'cozy']). Leave None for no tag filtering.
+        duration: Filter by time available. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Leave None for any duration.
+        vibe_name: Apply a vibe filter (uses the vibe's tag preferences). Vibe tags are combined with the tags parameter.
 
     Returns:
-        dict: Random activity with full details including tags
+        A random activity dictionary with full details including:
+            - id (int): Activity ID
+            - type (str): Activity category
+            - description (str): What to do
+            - tags (list[dict]): Associated tags
+            - duration (str | None): Time estimate
+            - And all other activity fields
 
     Raises:
-        ValueError: If no matching activities found or vibe not found
+        ValueError: If no matching activities found, or if vibe_name is provided but doesn't exist
     """
-    filters = filters or {}
-
     # Resolve vibe name to vibe ID and extract tag IDs
     vibe_id = None
     vibe_tag_ids = []
@@ -370,8 +415,8 @@ def get_random_activity(
 
     # Resolve tag names to tag IDs
     filter_tag_ids = []
-    if filters.get("tags"):
-        for tag_name in filters["tags"]:
+    if tags:
+        for tag_name in tags:
             tag = db.get_tag_by_name(tag_name)
             if not tag:
                 raise ValueError(f"Tag '{tag_name}' not found")
@@ -382,9 +427,9 @@ def get_random_activity(
 
     # Get random activity
     activity = db.get_random_uncompleted_activity_filtered(
-        activity_types=filters.get("types"),
+        activity_types=types,
         tag_ids=all_tag_ids if all_tag_ids else None,
-        duration=filters.get("duration"),
+        duration=duration,
     )
 
     if not activity:
@@ -534,7 +579,9 @@ def update_vibe(
         raise ValueError(f"Vibe '{name}' not found")
 
     # Use existing values if not provided
-    description = new_description if new_description is not None else vibe["description"]
+    description = (
+        new_description if new_description is not None else vibe["description"]
+    )
 
     # Resolve tag names if provided
     if tag_names is not None:

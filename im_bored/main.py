@@ -372,22 +372,14 @@ def main():
     elif command == "activities":
         console.print("")
 
-        # Build filters from args
-        filters = {}
-        if args.type:
-            # For multiple types, we'll filter after getting all activities
-            filters["type"] = args.type[0] if len(args.type) == 1 else None
-        if args.tags:
-            filters["tags"] = args.tags
-        if args.duration:
-            # For multiple durations, we'll filter after getting all activities
-            filters["duration"] = args.duration[0] if len(args.duration) == 1 else None
-        if args.completed:
-            filters["completed_only"] = True
-
-        # Get activities from services layer
+        # Get activities from services layer with individual parameters
+        # For multiple types, we'll filter after getting all activities
         activities = services.list_activities(
-            filters=filters if filters else None,
+            type=args.type[0] if args.type and len(args.type) == 1 else None,
+            tags=args.tags if args.tags else None,
+            duration=args.duration[0] if args.duration and len(args.duration) == 1 else None,
+            completable_only=False,
+            completed_only=args.completed if hasattr(args, 'completed') else False,
             show_archived=args.show_archived
         )
 
@@ -435,17 +427,12 @@ def main():
     elif command == "todo":
         console.print("")
 
-        # Build filters from args
-        filters = {}
-        if args.type:
-            filters["type"] = args.type[0] if len(args.type) == 1 else None
-        if args.tags:
-            filters["tags"] = args.tags
-        if args.duration:
-            filters["duration"] = args.duration[0] if len(args.duration) == 1 else None
-
-        # Get todos from services layer
-        activities = services.list_todos(filters=filters if filters else None)
+        # Get todos from services layer with individual parameters
+        activities = services.list_todos(
+            type=args.type[0] if args.type and len(args.type) == 1 else None,
+            tags=args.tags if args.tags else None,
+            duration=args.duration[0] if args.duration and len(args.duration) == 1 else None
+        )
 
         # Additional filtering for multiple types or durations
         if args.type and len(args.type) > 1:
@@ -748,23 +735,17 @@ def main():
             console.print(f"[red]✗ Error:[/red] {e}")
 
     elif command == "random":
-        # Prepare filters
-        filters = {}
-        if args.type:
-            filters["types"] = [args.type]
-        if args.duration:
-            filters["duration"] = args.duration
-        if args.tags:
-            filters["tags"] = [t.strip() for t in args.tags.split(",")]
-
+        # Prepare filter parameters
         vibe_name = args.vibe if args.vibe else None
         if vibe_name:
             console.print(f"[dim cyan]Applying vibe: {vibe_name}[/dim cyan]")
 
-        # Get random activity
+        # Get random activity with individual parameters
         try:
             choice = services.get_random_activity(
-                filters=filters if filters else None,
+                types=[args.type] if args.type else None,
+                tags=[t.strip() for t in args.tags.split(",")] if args.tags else None,
+                duration=args.duration if args.duration else None,
                 vibe_name=vibe_name
             )
         except ValueError as e:
@@ -801,18 +782,13 @@ def main():
         # Default imbored command - list all activities (excluding to-do)
         console.print("")
 
-        # Build filters from args
-        filters = {}
-        if args.type:
-            filters["type"] = args.type
-        if args.tags:
-            filters["tags"] = [t.strip() for t in args.tags.split(",")]
-        if args.duration:
-            filters["duration"] = args.duration
-
-        # Get activities from services layer
+        # Get activities from services layer with individual parameters
         activities = services.list_activities(
-            filters=filters if filters else None,
+            type=args.type if args.type else None,
+            tags=[t.strip() for t in args.tags.split(",")] if args.tags else None,
+            duration=args.duration if args.duration else None,
+            completable_only=False,
+            completed_only=False,
             show_archived=args.show_archived
         )
 
