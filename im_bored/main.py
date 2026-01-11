@@ -241,25 +241,7 @@ def main():
     tags_delete_parser = tags_subparser.add_parser("delete", help="Delete a tag")
     tags_delete_parser.add_argument("name", type=str, help="Tag name")
 
-    # Vibe management commands
-    vibes_parser = subparser.add_parser("vibes", help="Manage vibes")
-    vibes_subparser = vibes_parser.add_subparsers(dest="vibes_command")
-
-    vibes_subparser.add_parser("list", help="List all vibes")
-
-    vibes_create_parser = vibes_subparser.add_parser("create", help="Create a new vibe")
-    vibes_create_parser.add_argument("name", type=str, help="Vibe name")
-
-    vibes_edit_parser = vibes_subparser.add_parser("edit", help="Edit a vibe's tags")
-    vibes_edit_parser.add_argument("name", type=str, help="Vibe name")
-
-    vibes_delete_parser = vibes_subparser.add_parser("delete", help="Delete a vibe")
-    vibes_delete_parser.add_argument("name", type=str, help="Vibe name")
-
-    # Add --vibe flag to default command
-    parser.add_argument(
-        "--vibe", type=str, help="Filter activities by vibe (for default command)"
-    )
+    # Default command flags
     parser.add_argument(
         "--show-archived",
         action="store_true",
@@ -292,7 +274,6 @@ def main():
         type=str,
         help="Filter activities by tags (comma-separated)",
     )
-    random_parser.add_argument("--vibe", type=str, help="Filter activities by vibe")
 
     # Log command - manually log an activity as completed
     log_parser = subparser.add_parser(
@@ -506,147 +487,6 @@ def main():
             except ValueError as e:
                 console.print(f"[red]✗ Error:[/red] {e}")
 
-    elif command == "vibes":
-        from rich.prompt import Prompt
-
-        vibes_command = args.vibes_command
-
-        if vibes_command == "list" or vibes_command is None:
-            vibes = services.list_vibes()
-            if vibes:
-                console.print("\n[bold cyan]Available Vibes:[/bold cyan]")
-                for vibe in vibes:
-                    tag_str = ", ".join(f"#{tag['name']}" for tag in vibe["tags"])
-                    desc = (
-                        f" - {vibe['description']}" if vibe.get("description") else ""
-                    )
-                    console.print(f"  [bold]{vibe['name']}[/bold]{desc}")
-                    console.print(f"    Tags: {tag_str}")
-                console.print()
-            else:
-                console.print("No vibes found.")
-
-        elif vibes_command == "create":
-            # Get all tags for selection
-            all_tags = services.list_tags()
-            if not all_tags:
-                console.print(
-                    "✗ No tags available. Create some tags first with 'imbored tag create <name>'"
-                )
-                return
-
-            # Show available tags
-            console.print("\n[bold cyan]Available Tags:[/bold cyan]")
-            for i, tag in enumerate(all_tags, 1):
-                console.print(f"  {i}. #{tag['name']}")
-
-            # Prompt for description
-            description = Prompt.ask("\nVibe description (optional)", default="")
-
-            # Prompt for tags
-            console.print(
-                "\nEnter tag numbers (comma-separated) or tag names (comma-separated with #):"
-            )
-            tag_input = Prompt.ask("Tags")
-
-            # Parse tag input - collect tag names instead of IDs
-            selected_tag_names = []
-            for item in tag_input.split(","):
-                item = item.strip()
-                if item.startswith("#"):
-                    # Tag name
-                    tag_name = item[1:]
-                    try:
-                        services.get_tag_details(tag_name)
-                        selected_tag_names.append(tag_name)
-                    except ValueError:
-                        console.print(
-                            f"[yellow]Warning: Tag '{item}' not found, skipping[/yellow]"
-                        )
-                elif item.isdigit():
-                    # Tag number
-                    idx = int(item) - 1
-                    if 0 <= idx < len(all_tags):
-                        selected_tag_names.append(all_tags[idx]["name"])
-                    else:
-                        console.print(
-                            f"[yellow]Warning: Invalid tag number {item}, skipping[/yellow]"
-                        )
-
-            if selected_tag_names:
-                try:
-                    vibe_id = services.create_vibe(args.name, description, selected_tag_names)
-                    tag_str = ", ".join(f"#{name}" for name in selected_tag_names)
-                    console.print(f"\n✓ Created vibe: {args.name} with tags: {tag_str}")
-                except ValueError as e:
-                    console.print(f"[red]✗ Error:[/red] {e}")
-            else:
-                console.print("✗ No valid tags selected. Vibe not created.")
-
-        elif vibes_command == "edit":
-            try:
-                vibe = services.get_vibe_details(args.name)
-            except ValueError:
-                console.print(f"✗ Vibe not found: {args.name}")
-                return
-
-            # Get all tags for selection
-            all_tags = services.list_tags()
-            current_tag_names = {tag["name"] for tag in vibe["tags"]}
-
-            # Show available tags with current selection marked
-            console.print(f"\n[bold cyan]Editing vibe: {args.name}[/bold cyan]")
-            console.print("\n[bold]Available Tags:[/bold] (✓ = currently selected)")
-            for i, tag in enumerate(all_tags, 1):
-                mark = "✓" if tag["name"] in current_tag_names else " "
-                console.print(f"  {mark} {i}. #{tag['name']}")
-
-            # Prompt for new tags
-            console.print(
-                "\nEnter tag numbers (comma-separated) or tag names (comma-separated with #):"
-            )
-            console.print("[dim]Leave blank to keep current tags[/dim]")
-            tag_input = Prompt.ask("New tags", default="")
-
-            if not tag_input.strip():
-                console.print("No changes made.")
-                return
-
-            # Parse tag input - collect tag names
-            selected_tag_names = []
-            for item in tag_input.split(","):
-                item = item.strip()
-                if item.startswith("#"):
-                    # Tag name
-                    tag_name = item[1:]
-                    try:
-                        services.get_tag_details(tag_name)
-                        selected_tag_names.append(tag_name)
-                    except ValueError:
-                        pass  # Skip invalid tags
-                elif item.isdigit():
-                    # Tag number
-                    idx = int(item) - 1
-                    if 0 <= idx < len(all_tags):
-                        selected_tag_names.append(all_tags[idx]["name"])
-
-            if selected_tag_names:
-                try:
-                    services.update_vibe(args.name, tag_names=selected_tag_names)
-                    tag_str = ", ".join(f"#{name}" for name in selected_tag_names)
-                    console.print(f"\n✓ Updated vibe: {args.name} with tags: {tag_str}")
-                except ValueError as e:
-                    console.print(f"[red]✗ Error:[/red] {e}")
-            else:
-                console.print("✗ No valid tags selected.")
-
-        elif vibes_command == "delete":
-            try:
-                services.delete_vibe(args.name)
-                console.print(f"✓ Deleted vibe: {args.name}")
-            except ValueError as e:
-                console.print(f"[red]✗ Error:[/red] {e}")
-
     elif command == "log":
         try:
             activity = services.get_activity_details(args.activity_id)
@@ -735,18 +575,12 @@ def main():
             console.print(f"[red]✗ Error:[/red] {e}")
 
     elif command == "random":
-        # Prepare filter parameters
-        vibe_name = args.vibe if args.vibe else None
-        if vibe_name:
-            console.print(f"[dim cyan]Applying vibe: {vibe_name}[/dim cyan]")
-
         # Get random activity with individual parameters
         try:
             choice = services.get_random_activity(
                 types=[args.type] if args.type else None,
                 tags=[t.strip() for t in args.tags.split(",")] if args.tags else None,
                 duration=args.duration if args.duration else None,
-                vibe_name=vibe_name
             )
         except ValueError as e:
             # Build filter message
@@ -800,22 +634,6 @@ def main():
                 a.get("completable") and a["completed"] and not a.get("recurrence_days")
             )
         ]
-
-        # Apply vibe filter if specified
-        if args.vibe:
-            try:
-                vibe = services.get_vibe_details(args.vibe)
-                console.print(f"[dim cyan]Applying vibe: {args.vibe}[/dim cyan]\n")
-                vibe_tag_names = {tag["name"].lower() for tag in vibe["tags"]}
-                activities = [
-                    a
-                    for a in activities
-                    if any(tag["name"].lower() in vibe_tag_names for tag in a["tags"])
-                ]
-            except ValueError:
-                console.print(
-                    f"[yellow]Warning: Vibe '{args.vibe}' not found[/yellow]\n"
-                )
 
         grouped_data = {}
         for activity in activities:

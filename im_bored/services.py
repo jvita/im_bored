@@ -5,6 +5,7 @@ Functions in this module are designed to be easily wrappable by FastMCP or other
 """
 
 from typing import Annotated, Any
+from pydantic import Field
 from im_bored import db
 
 
@@ -14,16 +15,16 @@ from im_bored import db
 
 
 def add_activity(
-    type: Annotated[str, "Activity type/category (e.g., 'read', 'exercise', 'cook', 'general'). Can be any string."],
-    description: Annotated[str, "Clear, specific description of the activity (e.g., 'Read \"Project Hail Mary\" by Andy Weir')"],
-    tags: Annotated[list[str] | None, "Optional list of tag names for filtering (e.g., ['cozy', 'indoor', 'active']). Do not include # symbols."] = None,
-    duration: Annotated[str | None, "Optional time estimate. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Use this to filter by available time."] = None,
-    completable: Annotated[bool, "Set to True for todo items that should be marked done when finished. Set to False for repeatable activities."] = False,
-    recurrence_days: Annotated[int | None, "For recurring tasks only. Number of days between occurrences (e.g., 7 for weekly, 30 for monthly)."] = None,
-    due_date: Annotated[str | None, "Due date in ISO format YYYY-MM-DD (e.g., '2026-01-15'). Only for tasks with specific deadlines."] = None,
-    archived: Annotated[bool, "Set to True to create as archived (hidden from default views but kept in database)."] = False,
+    type: Annotated[str, Field(description="Activity type/category (e.g., 'read', 'exercise', 'cook', 'general'). Can be any string.")],
+    description: Annotated[str, Field(description="Clear, specific description of the activity (e.g., 'Read \"Project Hail Mary\" by Andy Weir')")],
+    tags: Annotated[list[str] | None, Field(description="Optional list of tag names for filtering (e.g., ['cozy', 'indoor', 'active']). Do not include # symbols.")] = None,
+    duration: Annotated[str | None, Field(description="Optional time estimate. Must be one of: '5min', '15min', '30min', '1h', '1h+'. Use this to filter by available time.")] = None,
+    completable: Annotated[bool, Field(description="Set to True for todo items that should be marked done when finished. Set to False for repeatable activities.")] = False,
+    recurrence_days: Annotated[int | None, Field(description="For recurring tasks only. Number of days between occurrences (e.g., 7 for weekly, 30 for monthly). Cannot be used with due_date.")] = None,
+    due_date: Annotated[str | None, Field(description="Due date in ISO format YYYY-MM-DD (e.g., '2026-01-15'). Only for tasks with specific deadlines. Cannot be used with recurrence_days.")] = None,
+    archived: Annotated[bool, Field(description="Set to True to create as archived (hidden from default views but kept in database).")] = False,
 ) -> int:
-    """Add a new activity to the database. Use this to create activities users can do when bored, or to add tasks to their todo list."""
+    """Add a new activity to the database for when users are bored or to create todo items."""
     if recurrence_days is not None and due_date is not None:
         raise ValueError("Cannot use both recurrence_days and due_date")
 
@@ -48,14 +49,14 @@ def add_activity(
 
 
 def list_activities(
-    type: Annotated[str | None, "Filter to a single activity type (e.g., 'read', 'exercise'). Use None to show all types."] = None,
-    tags: Annotated[list[str] | None, "Filter to activities that have ALL of these tags (e.g., ['cozy', 'indoor']). Use None for no tag filtering."] = None,
-    duration: Annotated[str | None, "Filter by duration: '5min', '15min', '30min', '1h', '1h+'. Use None to show all durations."] = None,
-    completable_only: Annotated[bool, "Set to True to only show todo items (completable activities). Set to False to show all activities."] = False,
-    completed_only: Annotated[bool, "Set to True to only show completed activities. Set to False to show incomplete or all activities."] = False,
-    show_archived: Annotated[bool, "Set to True to include archived activities in results. Set to False to hide archived activities."] = False,
+    type: Annotated[str | None, Field(description="Filter to a single activity type (e.g., 'read', 'exercise'). Use None to show all types.")] = None,
+    tags: Annotated[list[str] | None, Field(description="Filter to activities that have ALL of these tags (e.g., ['cozy', 'indoor']). Use None for no tag filtering.")] = None,
+    duration: Annotated[str | None, Field(description="Filter by duration: '5min', '15min', '30min', '1h', '1h+'. Use None to show all durations.")] = None,
+    completable_only: Annotated[bool, Field(description="Set to True to only show todo items (completable activities). Set to False to show all activities.")] = False,
+    completed_only: Annotated[bool, Field(description="Set to True to only show completed activities. Set to False to show incomplete or all activities.")] = False,
+    show_archived: Annotated[bool, Field(description="Set to True to include archived activities in results. Set to False to hide archived activities.")] = False,
 ) -> list[dict]:
-    """Get all activities with optional filtering. Returns a list of activity dictionaries with full details including tags."""
+    """Retrieve all activities with optional filtering by type, tags, duration, completion status, and archive status."""
     # Build filters dict for internal use
     filters: dict[str, Any] = {}
     if type:
@@ -143,18 +144,10 @@ def list_activities(
         return activities
 
 
-def get_activity_details(activity_id: int) -> dict:
-    """Get full details for a specific activity.
-
-    Parameters:
-        activity_id: The activity ID
-
-    Returns:
-        dict: Activity details with all fields and tags
-
-    Raises:
-        ValueError: If activity not found
-    """
+def get_activity_details(
+    activity_id: Annotated[int, Field(description="The activity ID to retrieve")]
+) -> dict:
+    """Get full details for a specific activity including all fields and associated tags."""
     activity = db.get_activity_by_id(activity_id)
     if not activity:
         raise ValueError(f"Activity {activity_id} not found")
@@ -165,15 +158,10 @@ def get_activity_details(activity_id: int) -> dict:
     return activity
 
 
-def remove_activity(activity_id: int) -> None:
-    """Permanently delete an activity.
-
-    Parameters:
-        activity_id: The activity ID to delete
-
-    Raises:
-        ValueError: If activity not found
-    """
+def remove_activity(
+    activity_id: Annotated[int, Field(description="The activity ID to permanently delete")]
+) -> None:
+    """Permanently delete an activity from the database."""
     activity = db.get_activity_by_id(activity_id)
     if not activity:
         raise ValueError(f"Activity {activity_id} not found")
@@ -181,15 +169,10 @@ def remove_activity(activity_id: int) -> None:
     db.delete_activity(activity_id)
 
 
-def archive_activity(activity_id: int) -> None:
-    """Archive an activity (hide from default views).
-
-    Parameters:
-        activity_id: The activity ID to archive
-
-    Raises:
-        ValueError: If activity not found or already archived
-    """
+def archive_activity(
+    activity_id: Annotated[int, Field(description="The activity ID to archive")]
+) -> None:
+    """Archive an activity to hide it from default views while keeping it in the database."""
     activity = db.get_activity_by_id(activity_id)
     if not activity:
         raise ValueError(f"Activity {activity_id} not found")
@@ -200,15 +183,10 @@ def archive_activity(activity_id: int) -> None:
     db.archive_activity(activity_id)
 
 
-def unarchive_activity(activity_id: int) -> None:
-    """Restore an archived activity.
-
-    Parameters:
-        activity_id: The activity ID to unarchive
-
-    Raises:
-        ValueError: If activity not found or not archived
-    """
+def unarchive_activity(
+    activity_id: Annotated[int, Field(description="The activity ID to unarchive")]
+) -> None:
+    """Restore an archived activity to make it visible in default views again."""
     activity = db.get_activity_by_id(activity_id)
     if not activity:
         raise ValueError(f"Activity {activity_id} not found")
@@ -225,11 +203,11 @@ def unarchive_activity(activity_id: int) -> None:
 
 
 def list_todos(
-    type: Annotated[str | None, "Filter to a single activity type (e.g., 'read', 'exercise'). Use None to show all types."] = None,
-    tags: Annotated[list[str] | None, "Filter to todos that have ALL of these tags (e.g., ['urgent', 'home']). Use None for no tag filtering."] = None,
-    duration: Annotated[str | None, "Filter by duration: '5min', '15min', '30min', '1h', '1h+'. Use None to show all durations."] = None,
+    type: Annotated[str | None, Field(description="Filter to a single activity type (e.g., 'read', 'exercise'). Use None to show all types.")] = None,
+    tags: Annotated[list[str] | None, Field(description="Filter to todos that have ALL of these tags (e.g., ['urgent', 'home']). Use None for no tag filtering.")] = None,
+    duration: Annotated[str | None, Field(description="Filter by duration: '5min', '15min', '30min', '1h', '1h+'. Use None to show all durations.")] = None,
 ) -> list[dict]:
-    """Get incomplete completable activities (todo list). Returns only activities marked as completable that haven't been completed yet."""
+    """Get all incomplete todo items (completable activities that haven't been completed)."""
     return list_activities(
         type=type,
         tags=tags,
@@ -240,17 +218,10 @@ def list_todos(
     )
 
 
-def complete_activity(activity_id: int) -> None:
-    """Mark an activity as complete.
-
-    For recurring tasks, this updates the next_due_date.
-
-    Parameters:
-        activity_id: The activity ID to mark as complete
-
-    Raises:
-        ValueError: If activity not found
-    """
+def complete_activity(
+    activity_id: Annotated[int, Field(description="The activity ID to mark as complete")]
+) -> None:
+    """Mark an activity as complete. For recurring tasks, this updates the next_due_date."""
     activity = db.get_activity_by_id(activity_id)
     if not activity:
         raise ValueError(f"Activity {activity_id} not found")
@@ -258,15 +229,10 @@ def complete_activity(activity_id: int) -> None:
     db.update_activity_completion(activity_id, completed=True)
 
 
-def uncomplete_activity(activity_id: int) -> None:
-    """Mark an activity as incomplete.
-
-    Parameters:
-        activity_id: The activity ID to mark as incomplete
-
-    Raises:
-        ValueError: If activity not found
-    """
+def uncomplete_activity(
+    activity_id: Annotated[int, Field(description="The activity ID to mark as incomplete")]
+) -> None:
+    """Mark an activity as incomplete (undo completion)."""
     activity = db.get_activity_by_id(activity_id)
     if not activity:
         raise ValueError(f"Activity {activity_id} not found")
@@ -274,34 +240,19 @@ def uncomplete_activity(activity_id: int) -> None:
     db.update_activity_completion(activity_id, completed=False)
 
 
-def log_activity_completion(activity_id: int, vibe_name: str | None = None) -> None:
-    """Log manual activity completion with analytics tracking.
-
-    Parameters:
-        activity_id: The activity ID to log
-        vibe_name: Optional vibe context for analytics
-
-    Raises:
-        ValueError: If activity not found or vibe not found
-    """
+def log_activity_completion(
+    activity_id: Annotated[int, Field(description="The activity ID to log completion for")],
+) -> None:
+    """Log manual activity completion with analytics tracking for statistics."""
     activity = db.get_activity_by_id(activity_id)
     if not activity:
         raise ValueError(f"Activity {activity_id} not found")
 
-    # Resolve vibe name to vibe ID if provided
-    vibe_id = None
-    if vibe_name:
-        vibe = db.get_vibe_by_name(vibe_name)
-        if not vibe:
-            raise ValueError(f"Vibe '{vibe_name}' not found")
-        vibe_id = vibe["id"]
-
     # Log the decision event
     db.log_decision_event(
         activity_id=activity_id,
-        vibe_id=vibe_id,
-        filter_tags=None,
         outcome="COMPLETED",
+        filter_tags=None,
         session_id=None,
     )
 
@@ -316,23 +267,11 @@ def log_activity_completion(activity_id: int, vibe_name: str | None = None) -> N
 
 
 def get_random_activity(
-    types: Annotated[list[str] | None, "Filter to specific activity types (e.g., ['read', 'exercise', 'cook']). Use None to select from all types."] = None,
-    tags: Annotated[list[str] | None, "Filter to activities with ALL of these tags (e.g., ['cozy', 'indoor']). Use None for no tag filtering."] = None,
-    duration: Annotated[str | None, "Filter by duration: '5min', '15min', '30min', '1h', '1h+'. Use None to select from all durations."] = None,
-    vibe_name: Annotated[str | None, "Apply a vibe filter by name (e.g., 'Rainy Day'). This will combine the vibe's tags with any tags parameter. Use None for no vibe filtering."] = None,
+    types: Annotated[list[str] | None, Field(description="Filter to specific activity types (e.g., ['read', 'exercise', 'cook']). Use None to select from all types.")] = None,
+    tags: Annotated[list[str] | None, Field(description="Filter to activities with ALL of these tags (e.g., ['cozy', 'indoor']). Use None for no tag filtering.")] = None,
+    duration: Annotated[str | None, Field(description="Filter by duration: '5min', '15min', '30min', '1h', '1h+'. Use None to select from all durations.")] = None,
 ) -> dict:
-    """Get a random uncompleted activity suggestion. Returns a single activity dictionary with full details including tags."""
-    # Resolve vibe name to vibe ID and extract tag IDs
-    vibe_id = None
-    vibe_tag_ids = []
-    if vibe_name:
-        vibe = db.get_vibe_by_name(vibe_name)
-        if not vibe:
-            raise ValueError(f"Vibe '{vibe_name}' not found")
-        vibe_id = vibe["id"]
-        vibe_tags = db.get_tags_for_vibe(vibe_id)
-        vibe_tag_ids = [tag["id"] for tag in vibe_tags]
-
+    """Get a random uncompleted activity suggestion based on optional filters."""
     # Resolve tag names to tag IDs
     filter_tag_ids = []
     if tags:
@@ -342,13 +281,10 @@ def get_random_activity(
                 raise ValueError(f"Tag '{tag_name}' not found")
             filter_tag_ids.append(tag["id"])
 
-    # Combine vibe tags and filter tags
-    all_tag_ids = list(set(vibe_tag_ids + filter_tag_ids))
-
     # Get random activity
     activity = db.get_random_uncompleted_activity_filtered(
         activity_types=types,
-        tag_ids=all_tag_ids if all_tag_ids else None,
+        tag_ids=filter_tag_ids if filter_tag_ids else None,
         duration=duration,
     )
 
@@ -367,23 +303,14 @@ def get_random_activity(
 
 
 def list_tags() -> list[dict]:
-    """Get all tags.
-
-    Returns:
-        list[dict]: List of tag dicts with id, name, created_at
-    """
+    """Get all tags in the database."""
     return db.get_all_tags()
 
 
-def create_tag(name: str) -> int:
-    """Create a new tag.
-
-    Parameters:
-        name: Tag name
-
-    Returns:
-        int: Tag ID (existing or newly created)
-    """
+def create_tag(
+    name: Annotated[str, Field(description="Tag name to create")]
+) -> int:
+    """Create a new tag or return existing tag ID if it already exists."""
     # Check if tag already exists
     existing_tag = db.get_tag_by_name(name)
     if existing_tag:
@@ -394,15 +321,10 @@ def create_tag(name: str) -> int:
     return tag_id
 
 
-def delete_tag(name: str) -> None:
-    """Delete a tag.
-
-    Parameters:
-        name: Tag name to delete
-
-    Raises:
-        ValueError: If tag not found
-    """
+def delete_tag(
+    name: Annotated[str, Field(description="Tag name to delete")]
+) -> None:
+    """Delete a tag from the database."""
     tag = db.get_tag_by_name(name)
     if not tag:
         raise ValueError(f"Tag '{name}' not found")
@@ -410,18 +332,10 @@ def delete_tag(name: str) -> None:
     db.delete_tag(tag["id"])
 
 
-def get_tag_details(name: str) -> dict:
-    """Get tag details by name.
-
-    Parameters:
-        name: Tag name
-
-    Returns:
-        dict: Tag details
-
-    Raises:
-        ValueError: If tag not found
-    """
+def get_tag_details(
+    name: Annotated[str, Field(description="Tag name to retrieve")]
+) -> dict:
+    """Get tag details by name."""
     tag = db.get_tag_by_name(name)
     if not tag:
         raise ValueError(f"Tag '{name}' not found")
@@ -430,147 +344,12 @@ def get_tag_details(name: str) -> dict:
 
 
 # ============================================================================
-# Vibe Management Services
-# ============================================================================
-
-
-def list_vibes() -> list[dict]:
-    """Get all vibes with their associated tags.
-
-    Returns:
-        list[dict]: List of vibe dicts, each with tags included
-    """
-    vibes = db.get_all_vibes()
-
-    # Add tags for each vibe
-    for vibe in vibes:
-        vibe["tags"] = db.get_tags_for_vibe(vibe["id"])
-
-    return vibes
-
-
-def create_vibe(name: str, description: str, tag_names: list[str]) -> int:
-    """Create a new vibe.
-
-    Parameters:
-        name: Vibe name
-        description: Vibe description
-        tag_names: List of tag names to associate with this vibe
-
-    Returns:
-        int: Vibe ID
-
-    Raises:
-        ValueError: If tag names are empty or invalid tags
-    """
-    if not tag_names:
-        raise ValueError("Vibe must have at least one tag")
-
-    # Resolve tag names to tag IDs
-    tag_ids = []
-    for tag_name in tag_names:
-        tag = db.get_tag_by_name(tag_name)
-        if not tag:
-            raise ValueError(f"Tag '{tag_name}' not found")
-        tag_ids.append(tag["id"])
-
-    vibe_id = db.create_vibe(name, description, tag_ids)
-    assert vibe_id is not None  # db function always returns int
-    return vibe_id
-
-
-def update_vibe(
-    name: str,
-    new_description: str | None = None,
-    tag_names: list[str] | None = None,
-) -> None:
-    """Update a vibe's details.
-
-    Parameters:
-        name: Current vibe name
-        new_description: Optional new description
-        tag_names: Optional new list of tag names
-
-    Raises:
-        ValueError: If vibe not found or invalid tags
-    """
-    vibe = db.get_vibe_by_name(name)
-    if not vibe:
-        raise ValueError(f"Vibe '{name}' not found")
-
-    # Use existing values if not provided
-    description = (
-        new_description if new_description is not None else vibe["description"]
-    )
-
-    # Resolve tag names if provided
-    if tag_names is not None:
-        if not tag_names:
-            raise ValueError("Vibe must have at least one tag")
-
-        tag_ids = []
-        for tag_name in tag_names:
-            tag = db.get_tag_by_name(tag_name)
-            if not tag:
-                raise ValueError(f"Tag '{tag_name}' not found")
-            tag_ids.append(tag["id"])
-    else:
-        # Keep existing tags
-        existing_tags = db.get_tags_for_vibe(vibe["id"])
-        tag_ids = [tag["id"] for tag in existing_tags]
-
-    db.update_vibe(vibe["id"], name, description, tag_ids)
-
-
-def delete_vibe(name: str) -> None:
-    """Delete a vibe.
-
-    Parameters:
-        name: Vibe name to delete
-
-    Raises:
-        ValueError: If vibe not found
-    """
-    vibe = db.get_vibe_by_name(name)
-    if not vibe:
-        raise ValueError(f"Vibe '{name}' not found")
-
-    db.delete_vibe(vibe["id"])
-
-
-def get_vibe_details(name: str) -> dict:
-    """Get vibe details by name.
-
-    Parameters:
-        name: Vibe name
-
-    Returns:
-        dict: Vibe details with tags included
-
-    Raises:
-        ValueError: If vibe not found
-    """
-    vibe = db.get_vibe_by_name(name)
-    if not vibe:
-        raise ValueError(f"Vibe '{name}' not found")
-
-    # Add tags
-    vibe["tags"] = db.get_tags_for_vibe(vibe["id"])
-
-    return vibe
-
-
-# ============================================================================
 # Category Services
 # ============================================================================
 
 
 def list_categories() -> list[str]:
-    """Get all unique activity types.
-
-    Returns:
-        list[str]: Sorted list of activity type strings
-    """
+    """Get all unique activity types used in the database."""
     types = db.get_all_types()
     return sorted(types)
 
@@ -580,24 +359,15 @@ def list_categories() -> list[str]:
 # ============================================================================
 
 
-def get_stats(days: int | None = None) -> dict:
-    """Get activity completion statistics.
-
-    Parameters:
-        days: Number of days to analyze (None = all time)
-
-    Returns:
-        dict: Statistics with keys like total_rolls, completed_count, etc.
-    """
+def get_stats(
+    days: Annotated[int | None, Field(description="Number of days to analyze. Use None for all-time statistics.")] = None
+) -> dict:
+    """Get activity completion statistics for a specified time period."""
     return db.get_decision_stats(days=days)
 
 
 def reset_stats() -> int:
-    """Clear all decision event statistics.
-
-    Returns:
-        int: Number of events cleared
-    """
+    """Clear all decision event statistics and return the number of events cleared."""
     return db.clear_all_decision_events()
 
 
@@ -607,14 +377,7 @@ def reset_stats() -> int:
 
 
 def ensure_database() -> None:
-    """Ensure database exists and is initialized.
-
-    Creates database at default path if it doesn't exist.
-    This is a non-interactive version for MCP usage.
-
-    Raises:
-        Exception: If database cannot be created
-    """
+    """Ensure database exists and is initialized at the default path."""
     from pathlib import Path
 
     db_path = db.get_db_path()
@@ -625,9 +388,5 @@ def ensure_database() -> None:
 
 
 def reset_recurring_activities() -> int:
-    """Reset expired recurring activities.
-
-    Returns:
-        int: Number of activities reset
-    """
+    """Reset expired recurring activities and return the number of activities reset."""
     return db.reset_expired_recurring_activities()

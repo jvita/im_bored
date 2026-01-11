@@ -37,24 +37,6 @@ imbored remove 1
 imbored archive 1
 ```
 
-### Defining "vibes"
-A "vibe" is tag-based grouping of multiple activities. For example, the "Rainy Sunday" vibe might include anything with the `#cozy` or `#indoor` tags. Vibes are useful when you want to generate a random activity to match a certain mood.
-
-```bash
-# Define a new vibe
-imbored vibes create "Rainy Day"
->>> Vibe description (optional) (): A relaxing indoor activity
-
->>> Enter tag numbers (comma-separated) or tag names (comma-separated with #):
->>> Tags: #cozy, #indoor, #indoors, #calm
-
-# See existing vibes
-imbored vibes
-
-# Generate an idea using a specified vibe
-imbored --vibe "Rainy Day"
-```
-
 ### Browsing activities
 ```bash
 # Show everything
@@ -133,7 +115,6 @@ The service layer (`im_bored.services`) provides ~25 functions organized into th
 - **Todo Management**: `list_todos()`, `complete_activity()`, `uncomplete_activity()`, `log_activity_completion()`
 - **Random Selection**: `get_random_activity()`
 - **Tag Management**: `list_tags()`, `create_tag()`, `delete_tag()`, `get_tag_details()`
-- **Vibe Management**: `list_vibes()`, `create_vibe()`, `update_vibe()`, `delete_vibe()`, `get_vibe_details()`
 - **Categories**: `list_categories()`
 - **Analytics**: `get_stats()`, `reset_stats()`
 - **System**: `ensure_database()`, `reset_recurring_activities()`
@@ -183,8 +164,7 @@ def add_activity(
 def get_random_activity(
     types: list[str] | None = None,
     tags: list[str] | None = None,
-    duration: str | None = None,
-    vibe_name: str | None = None
+    duration: str | None = None
 ) -> dict:
     """Get a random activity suggestion.
 
@@ -192,19 +172,11 @@ def get_random_activity(
         types: Optional list of activity types to filter by
         tags: Optional list of tags to filter by
         duration: Optional duration to filter by
-        vibe_name: Optional vibe name to apply
 
     Returns:
         Activity dict with full details
     """
-    filters = {}
-    if types:
-        filters['types'] = types
-    if tags:
-        filters['tags'] = tags
-    if duration:
-        filters['duration'] = duration
-    return services.get_random_activity(filters, vibe_name)
+    return services.get_random_activity(types=types, tags=tags, duration=duration)
 
 @mcp.tool()
 def list_todos() -> list[dict]:

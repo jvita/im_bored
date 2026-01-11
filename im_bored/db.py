@@ -174,73 +174,22 @@ def initialize_database(db_path: Path | None = None):
             "CREATE INDEX IF NOT EXISTS idx_activity_tags_tag ON activity_tags(tag_id)"
         )
 
-        # Create vibes table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS vibes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                description TEXT,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-        """
-        )
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_vibes_name ON vibes(name)")
-
-        # Create timestamp trigger for vibes
-        cursor.execute(
-            """
-            CREATE TRIGGER IF NOT EXISTS update_vibes_timestamp
-            AFTER UPDATE ON vibes
-            FOR EACH ROW
-            BEGIN
-                UPDATE vibes SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-            END
-        """
-        )
-
-        # Create vibe_tags junction table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS vibe_tags (
-                vibe_id INTEGER NOT NULL,
-                tag_id INTEGER NOT NULL,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (vibe_id, tag_id),
-                FOREIGN KEY (vibe_id) REFERENCES vibes(id) ON DELETE CASCADE,
-                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
-            )
-        """
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vibe_tags_vibe ON vibe_tags(vibe_id)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vibe_tags_tag ON vibe_tags(tag_id)"
-        )
-
         # Create decision_events table
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS decision_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 activity_id INTEGER NOT NULL,
-                vibe_id INTEGER,
                 filter_tags TEXT,
                 outcome TEXT NOT NULL CHECK(outcome IN ('COMPLETED', 'SKIPPED', 'IGNORED')),
                 session_id TEXT,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
-                FOREIGN KEY (vibe_id) REFERENCES vibes(id) ON DELETE SET NULL
+                FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE
             )
         """
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_decision_events_activity ON decision_events(activity_id)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_decision_events_vibe ON decision_events(vibe_id)"
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_decision_events_outcome ON decision_events(outcome)"
@@ -299,43 +248,20 @@ def get_random_uncompleted_activity(activity_types=None):
 
 
 def get_random_uncompleted_activity_filtered(
-    activity_types=None, tag_ids=None, duration=None, vibe_id=None
+    activity_types=None, tag_ids=None, duration=None
 ):
     """Get a random uncompleted activity with advanced filtering.
 
     Args:
         activity_types: Optional list of types to filter by
-        tag_ids: Optional list of tag IDs (when vibe_id is None: activity must have ALL these tags; when vibe_id is set: activity must have ANY of the vibe's tags)
+        tag_ids: Optional list of tag IDs (activity must have ALL these tags)
         duration: Optional duration filter ('5min', '15min', '30min', '1h', '1h+')
-        vibe_id: Optional vibe ID (will apply vibe's tag filters, matching ANY tag)
 
     Returns:
         dict: Activity data or None if no matching activities exist
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
-
-        # Track whether we're using vibe tags (affects matching logic)
-        use_any_tag_matching = False
-
-        # If vibe_id is provided, get its tags
-        if vibe_id is not None:
-            cursor.execute(
-                """
-                SELECT tag_id FROM vibe_tags WHERE vibe_id = ?
-            """,
-                (vibe_id,),
-            )
-            vibe_tag_ids = [row[0] for row in cursor.fetchall()]
-
-            # Combine with any additional tag filters
-            if tag_ids:
-                tag_ids = list(set(tag_ids + vibe_tag_ids))
-            else:
-                tag_ids = vibe_tag_ids
-
-            # Use ANY matching for vibes
-            use_any_tag_matching = True
 
         # Build the query - exclude archived activities
         query = "SELECT * FROM activities WHERE completed = 0 AND archived = 0"
@@ -352,29 +278,18 @@ def get_random_uncompleted_activity_filtered(
             query += " AND duration = ?"
             params.append(duration)
 
-        # Filter by tags
+        # Filter by tags - activity must have ALL specified tags
         if tag_ids:
-            if use_any_tag_matching:
-                # For vibes: activity must have ANY of the specified tags
-                query += """ AND id IN (
-                    SELECT DISTINCT activity_id FROM activity_tags
-                    WHERE tag_id IN ({})
-                )""".format(
-                    ",".join("?" * len(tag_ids))
-                )
-                params.extend(tag_ids)
-            else:
-                # For explicit tag filters: activity must have ALL specified tags
-                query += """ AND id IN (
-                    SELECT activity_id FROM activity_tags
-                    WHERE tag_id IN ({})
-                    GROUP BY activity_id
-                    HAVING COUNT(DISTINCT tag_id) = ?
-                )""".format(
-                    ",".join("?" * len(tag_ids))
-                )
-                params.extend(tag_ids)
-                params.append(len(tag_ids))
+            query += """ AND id IN (
+                SELECT activity_id FROM activity_tags
+                WHERE tag_id IN ({})
+                GROUP BY activity_id
+                HAVING COUNT(DISTINCT tag_id) = ?
+            )""".format(
+                ",".join("?" * len(tag_ids))
+            )
+            params.extend(tag_ids)
+            params.append(len(tag_ids))
 
         # Random selection
         query += " ORDER BY RANDOM() LIMIT 1"
@@ -795,211 +710,6 @@ def add_activity_with_tags(
 
 
 # ============================================================================
-# Vibe Management Functions
-# ============================================================================
-
-
-def get_all_vibes():
-    """Get all vibes with their associated tags.
-
-    Returns:
-        list[dict]: List of all vibes, each with a 'tags' key containing associated tags
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM vibes ORDER BY name")
-        vibes = [dict(row) for row in cursor.fetchall()]
-
-        # Fetch tags for each vibe
-        for vibe in vibes:
-            cursor.execute(
-                """
-                SELECT t.* FROM tags t
-                JOIN vibe_tags vt ON t.id = vt.tag_id
-                WHERE vt.vibe_id = ?
-                ORDER BY t.name
-            """,
-                (vibe["id"],),
-            )
-            vibe["tags"] = [dict(row) for row in cursor.fetchall()]
-
-        return vibes
-
-
-def get_vibe_by_id(vibe_id: int):
-    """Get a vibe by its ID with associated tags.
-
-    Args:
-        vibe_id: The vibe ID to search for
-
-    Returns:
-        dict | None: Vibe data with tags, or None if not found
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM vibes WHERE id = ?", (vibe_id,))
-        row = cursor.fetchone()
-
-        if not row:
-            return None
-
-        vibe = dict(row)
-
-        # Fetch associated tags
-        cursor.execute(
-            """
-            SELECT t.* FROM tags t
-            JOIN vibe_tags vt ON t.id = vt.tag_id
-            WHERE vt.vibe_id = ?
-            ORDER BY t.name
-        """,
-            (vibe_id,),
-        )
-        vibe["tags"] = [dict(row) for row in cursor.fetchall()]
-
-        return vibe
-
-
-def get_vibe_by_name(name: str):
-    """Get a vibe by its name with associated tags (case-insensitive).
-
-    Args:
-        name: The vibe name to search for
-
-    Returns:
-        dict | None: Vibe data with tags, or None if not found
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM vibes WHERE LOWER(name) = LOWER(?)", (name,))
-        row = cursor.fetchone()
-
-        if not row:
-            return None
-
-        vibe = dict(row)
-
-        # Fetch associated tags
-        cursor.execute(
-            """
-            SELECT t.* FROM tags t
-            JOIN vibe_tags vt ON t.id = vt.tag_id
-            WHERE vt.vibe_id = ?
-            ORDER BY t.name
-        """,
-            (vibe["id"],),
-        )
-        vibe["tags"] = [dict(row) for row in cursor.fetchall()]
-
-        return vibe
-
-
-def create_vibe(name: str, description: str, tag_ids: list[int]):
-    """Create a new vibe with associated tags.
-
-    Args:
-        name: The vibe name
-        description: Description of the vibe
-        tag_ids: List of tag IDs to associate with this vibe
-
-    Returns:
-        int: The ID of the created vibe
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-
-        # Insert vibe
-        cursor.execute(
-            "INSERT INTO vibes (name, description) VALUES (?, ?)", (name, description)
-        )
-        vibe_id = cursor.lastrowid
-
-        # Associate tags
-        for tag_id in tag_ids:
-            cursor.execute(
-                "INSERT INTO vibe_tags (vibe_id, tag_id) VALUES (?, ?)",
-                (vibe_id, tag_id),
-            )
-
-        return vibe_id
-
-
-def update_vibe(vibe_id: int, name: str, description: str, tag_ids: list[int]):
-    """Update a vibe's details and tag associations.
-
-    Args:
-        vibe_id: The ID of the vibe to update
-        name: New name
-        description: New description
-        tag_ids: New list of tag IDs (replaces existing associations)
-
-    Returns:
-        bool: True if update was successful, False if vibe not found
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-
-        # Update vibe
-        cursor.execute(
-            "UPDATE vibes SET name = ?, description = ? WHERE id = ?",
-            (name, description, vibe_id),
-        )
-
-        if cursor.rowcount == 0:
-            return False
-
-        # Remove old tag associations
-        cursor.execute("DELETE FROM vibe_tags WHERE vibe_id = ?", (vibe_id,))
-
-        # Add new tag associations
-        for tag_id in tag_ids:
-            cursor.execute(
-                "INSERT INTO vibe_tags (vibe_id, tag_id) VALUES (?, ?)",
-                (vibe_id, tag_id),
-            )
-
-        return True
-
-
-def delete_vibe(vibe_id: int):
-    """Delete a vibe from the database.
-
-    Args:
-        vibe_id: The ID of the vibe to delete
-
-    Returns:
-        bool: True if deletion was successful, False if vibe not found
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM vibes WHERE id = ?", (vibe_id,))
-        return cursor.rowcount > 0
-
-
-def get_tags_for_vibe(vibe_id: int):
-    """Get all tags associated with a vibe.
-
-    Args:
-        vibe_id: The ID of the vibe
-
-    Returns:
-        list[dict]: List of tags for this vibe
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT t.* FROM tags t
-            JOIN vibe_tags vt ON t.id = vt.tag_id
-            WHERE vt.vibe_id = ?
-            ORDER BY t.name
-        """,
-            (vibe_id,),
-        )
-        return [dict(row) for row in cursor.fetchall()]
-
-
-# ============================================================================
 # Decision Events & Analytics Functions
 # ============================================================================
 
@@ -1007,7 +717,6 @@ def get_tags_for_vibe(vibe_id: int):
 def log_decision_event(
     activity_id: int,
     outcome: str,
-    vibe_id: int | None = None,
     filter_tags: list[int] | None = None,
     session_id: str | None = None,
 ):
@@ -1016,7 +725,6 @@ def log_decision_event(
     Args:
         activity_id: The ID of the activity that was shown
         outcome: 'COMPLETED', 'SKIPPED', or 'IGNORED'
-        vibe_id: Optional vibe ID that was active
         filter_tags: Optional list of tag IDs that were active filters
         session_id: Optional session ID for grouping decisions
 
@@ -1033,10 +741,10 @@ def log_decision_event(
 
         cursor.execute(
             """
-            INSERT INTO decision_events (activity_id, outcome, vibe_id, filter_tags, session_id)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO decision_events (activity_id, outcome, filter_tags, session_id)
+            VALUES (?, ?, ?, ?)
         """,
-            (activity_id, outcome, vibe_id, filter_tags_json, session_id),
+            (activity_id, outcome, filter_tags_json, session_id),
         )
 
         return cursor.lastrowid
@@ -1058,7 +766,6 @@ def get_decision_stats(days: int | None = None):
             - skip_rate: Percentage of skipped activities
             - most_completed: List of most completed activities
             - most_skipped: List of most skipped activities
-            - vibe_usage: Dict of vibe names to usage counts
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -1113,12 +820,10 @@ def get_decision_stats(days: int | None = None):
         if days is not None:
             completed_where = "WHERE de.created_at >= ? AND de.outcome = 'COMPLETED'"
             skipped_where = "WHERE de.created_at >= ? AND de.outcome = 'SKIPPED'"
-            vibe_where = "WHERE de.created_at >= ? AND de.vibe_id IS NOT NULL"
             query_params = (since_date,)
         else:
             completed_where = "WHERE de.outcome = 'COMPLETED'"
             skipped_where = "WHERE de.outcome = 'SKIPPED'"
-            vibe_where = "WHERE de.vibe_id IS NOT NULL"
             query_params = ()
 
         cursor.execute(
@@ -1150,20 +855,6 @@ def get_decision_stats(days: int | None = None):
         )
         most_skipped = [dict(row) for row in cursor.fetchall()]
 
-        # Vibe usage
-        cursor.execute(
-            f"""
-            SELECT v.name, COUNT(*) as count
-            FROM decision_events de
-            JOIN vibes v ON de.vibe_id = v.id
-            {vibe_where}
-            GROUP BY v.id
-            ORDER BY count DESC
-        """,
-            query_params,
-        )
-        vibe_usage = {row[0]: row[1] for row in cursor.fetchall()}
-
         return {
             "total_rolls": total_rolls,
             "completed_count": completed_count,
@@ -1173,7 +864,6 @@ def get_decision_stats(days: int | None = None):
             "skip_rate": skip_rate,
             "most_completed": most_completed,
             "most_skipped": most_skipped,
-            "vibe_usage": vibe_usage,
             "days": days,
         }
 
