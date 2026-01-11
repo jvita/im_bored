@@ -7,10 +7,8 @@ from datetime import datetime
 def parse_activity(activity: str) -> dict:
     """Parse an activity string into a structured dictionary.
 
-    Format: [type] description #tag1 #tag2 --duration 15min --completable --recurring 2weeks --due 2026-01-15
+    Format: [type] description --completable --recurring 2weeks --due 2026-01-15
     If no type is specified, defaults to 'general'
-    Hashtags are extracted as tags
-    --duration flag specifies duration
     --completable flag marks this as a one-off to-do activity
     --recurring flag specifies recurrence period
     --due flag specifies due date
@@ -21,9 +19,7 @@ def parse_activity(activity: str) -> dict:
     Returns:
         dict: Parsed activity with keys:
             - type: Activity type (str)
-            - description: Clean description without tags/flags (str)
-            - tags: List of tag names (list[str])
-            - duration: Duration string or None (str | None)
+            - description: Clean description without flags (str)
             - completed: Always 0 for new activities (int)
             - completable: Whether this is a completable todo (bool)
             - recurrence_days: Recurrence period in days or None (int | None)
@@ -33,7 +29,7 @@ def parse_activity(activity: str) -> dict:
     Raises:
         ValueError: If both --recurring and --due are specified, or if date format is invalid
     """
-    from im_bored.db import parse_tags_from_description, parse_recurrence_to_days
+    from im_bored.db import parse_recurrence_to_days
 
     # Extract type
     type_pattern = r"^\[(.*?)\]\s*"
@@ -79,24 +75,12 @@ def parse_activity(activity: str) -> dict:
             )
         remaining = remaining.replace(due_match.group(0), "").strip()
 
-    # Extract duration flag
-    duration_match = re.search(r"--duration\s+(\S+)", remaining)
-    duration = None
-    if duration_match:
-        duration_str = duration_match.group(1)
-        # Validate duration
-        if duration_str in ["5min", "15min", "30min", "1h", "1h+"]:
-            duration = duration_str
-        remaining = remaining.replace(duration_match.group(0), "").strip()
-
-    # Extract hashtags and clean description
-    clean_description, tags = parse_tags_from_description(remaining)
+    # Clean description
+    clean_description = remaining.strip()
 
     return {
         "type": activity_type,
         "description": clean_description,
-        "tags": tags,
-        "duration": duration,
         "completed": 0,
         "completable": completable,
         "recurrence_days": recurrence_days,

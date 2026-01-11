@@ -12,12 +12,6 @@ imbored add "Read a book"
 # Categorize (defaults to 'general')
 imbored add "[read] Read a book"
 
-# Add tags for filtering later (MUST use quotations because # breaks bash parsing)
-imbored add "[read] Read a book #cozy #indoors"
-
-# Add a duration (allowed values are '5min', '15min', '30min', '1h', and '1h+')
-imbored add "[read] Read a book --duration 30min"
-
 # Make the activity a completable, one-off to-do item
 imbored add "Buy groceries --completable"
 
@@ -42,10 +36,8 @@ imbored archive 1
 # Show everything
 imbored
 
-# Show only specific categories/tags/durations
+# Show only specific categories
 imbored --type read
-imbored --tags cozy
-imbored --duration 30min
 
 # Show archived
 imbored --show-archived
@@ -56,10 +48,8 @@ imbored --show-archived
 # Return a random activity
 imbored random
 
-# Return a random activity using category/tag/duration as a filter
+# Return a random activity using category as a filter
 imbored random --type read
-imbored random --tags exercise
-imbored random --duration 30min
 ```
 
 ### Optional Tracking (Stress-Free)
@@ -114,7 +104,6 @@ The service layer (`im_bored.services`) provides ~25 functions organized into th
 - **Activity Management**: `add_activity()`, `list_activities()`, `get_activity_details()`, `remove_activity()`, `archive_activity()`, `unarchive_activity()`
 - **Todo Management**: `list_todos()`, `complete_activity()`, `uncomplete_activity()`, `log_activity_completion()`
 - **Random Selection**: `get_random_activity()`
-- **Tag Management**: `list_tags()`, `create_tag()`, `delete_tag()`, `get_tag_details()`
 - **Categories**: `list_categories()`
 - **Analytics**: `get_stats()`, `reset_stats()`
 - **System**: `ensure_database()`, `reset_recurring_activities()`
@@ -138,8 +127,6 @@ mcp = FastMCP("im-bored")
 def add_activity(
     type: str,
     description: str,
-    tags: list[str] | None = None,
-    duration: str | None = None,
     completable: bool = False,
     recurrence_days: int | None = None,
     due_date: str | None = None
@@ -149,8 +136,6 @@ def add_activity(
     Args:
         type: Activity type (e.g., 'read', 'exercise', 'cook')
         description: Activity description
-        tags: Optional list of tag names
-        duration: Optional duration ('5min', '15min', '30min', '1h', '1h+')
         completable: Whether this is a completable todo item
         recurrence_days: Optional recurrence period in days
         due_date: Optional due date (ISO format: YYYY-MM-DD)
@@ -158,25 +143,21 @@ def add_activity(
     Returns:
         Activity ID
     """
-    return services.add_activity(type, description, tags, duration, completable, recurrence_days, due_date)
+    return services.add_activity(type, description, completable, recurrence_days, due_date)
 
 @mcp.tool()
 def get_random_activity(
     types: list[str] | None = None,
-    tags: list[str] | None = None,
-    duration: str | None = None
 ) -> dict:
     """Get a random activity suggestion.
 
     Args:
         types: Optional list of activity types to filter by
-        tags: Optional list of tags to filter by
-        duration: Optional duration to filter by
 
     Returns:
         Activity dict with full details
     """
-    return services.get_random_activity(types=types, tags=tags, duration=duration)
+    return services.get_random_activity(types=types)
 
 @mcp.tool()
 def list_todos() -> list[dict]:

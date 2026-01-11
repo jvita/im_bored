@@ -93,15 +93,6 @@ def create_panel(data, title, width=None, show_completable=False):
                 checkbox = "✓" if entry["completed"] else "☐"
             desc = f"{checkbox} {desc}"
 
-        # Add tags if present
-        if entry.get("tags"):
-            tag_str = " ".join(f"[dim]#{tag['name']}[/dim]" for tag in entry["tags"])
-            desc = f"{desc} {tag_str}"
-
-        # Add duration if present
-        if entry.get("duration"):
-            desc = f"{desc} [dim cyan]({entry['duration']})[/dim cyan]"
-
         # Add recurrence frequency if present
         if entry.get("recurrence_days"):
             recurrence_str = format_recurrence_days(entry["recurrence_days"])
@@ -151,16 +142,6 @@ def main():
     parser.add_argument(
         "--type", type=str, help="Filter activities by type (for default command)"
     )
-    parser.add_argument(
-        "--duration",
-        type=str,
-        help="Filter activities by duration (for default command)",
-    )
-    parser.add_argument(
-        "--tags",
-        type=str,
-        help="Filter activities by tags (comma-separated, for default command)",
-    )
 
     subparser = parser.add_subparsers(dest="command")
 
@@ -206,10 +187,6 @@ def main():
     activities_parser.add_argument(
         "--type", type=str, nargs="+", help="Filter by activity types"
     )
-    activities_parser.add_argument("--tags", type=str, nargs="+", help="Filter by tags")
-    activities_parser.add_argument(
-        "--duration", type=str, nargs="+", help="Filter by duration"
-    )
     activities_parser.add_argument(
         "--completed", action="store_true", help="Show only completed activities"
     )
@@ -221,25 +198,9 @@ def main():
     todo_parser.add_argument(
         "--type", type=str, nargs="+", help="Filter by activity types"
     )
-    todo_parser.add_argument("--tags", type=str, nargs="+", help="Filter by tags")
-    todo_parser.add_argument(
-        "--duration", type=str, nargs="+", help="Filter by duration"
-    )
 
     # Categories command
     subparser.add_parser("categories", help="List all activity categories")
-
-    # Tag management commands
-    tags_parser = subparser.add_parser("tags", help="Manage tags")
-    tags_subparser = tags_parser.add_subparsers(dest="tags_command")
-
-    tags_subparser.add_parser("list", help="List all tags")
-
-    tags_create_parser = tags_subparser.add_parser("create", help="Create a new tag")
-    tags_create_parser.add_argument("name", type=str, help="Tag name")
-
-    tags_delete_parser = tags_subparser.add_parser("delete", help="Delete a tag")
-    tags_delete_parser.add_argument("name", type=str, help="Tag name")
 
     # Default command flags
     parser.add_argument(
@@ -264,16 +225,6 @@ def main():
     # Random command - pick a random activity with filtering
     random_parser = subparser.add_parser("random", help="Pick a random activity")
     random_parser.add_argument("--type", type=str, help="Filter activities by type")
-    random_parser.add_argument(
-        "--duration",
-        type=str,
-        help="Filter activities by duration",
-    )
-    random_parser.add_argument(
-        "--tags",
-        type=str,
-        help="Filter activities by tags (comma-separated)",
-    )
 
     # Log command - manually log an activity as completed
     log_parser = subparser.add_parser(
@@ -301,8 +252,6 @@ def main():
             activity_id = services.add_activity(
                 type=parsed["type"],
                 description=parsed["description"],
-                tags=parsed["tags"],
-                duration=parsed["duration"],
                 completable=parsed["completable"],
                 recurrence_days=parsed["recurrence_days"],
                 due_date=parsed["due_date"],
@@ -310,11 +259,6 @@ def main():
 
             # Build output message
             msg = f"Added activity {activity_id}: \\[{parsed['type']}] {parsed['description']}"
-            if parsed["tags"]:
-                tag_str = " ".join(f"#{tag}" for tag in parsed["tags"])
-                msg += f" {tag_str}"
-            if parsed["duration"]:
-                msg += f" ({parsed['duration']})"
             if parsed["completable"]:
                 msg += " [completable]"
             if parsed["recurrence_days"]:
@@ -357,8 +301,6 @@ def main():
         # For multiple types, we'll filter after getting all activities
         activities = services.list_activities(
             type=args.type[0] if args.type and len(args.type) == 1 else None,
-            tags=args.tags if args.tags else None,
-            duration=args.duration[0] if args.duration and len(args.duration) == 1 else None,
             completable_only=False,
             completed_only=args.completed if hasattr(args, 'completed') else False,
             show_archived=args.show_archived
@@ -373,12 +315,9 @@ def main():
             )
         ]
 
-        # Additional filtering for multiple types or durations
+        # Additional filtering for multiple types
         if args.type and len(args.type) > 1:
             activities = [a for a in activities if a["type"] in args.type]
-
-        if args.duration and len(args.duration) > 1:
-            activities = [a for a in activities if a.get("duration") in args.duration]
 
         grouped_data = {}
         for activity in activities:
@@ -411,16 +350,11 @@ def main():
         # Get todos from services layer with individual parameters
         activities = services.list_todos(
             type=args.type[0] if args.type and len(args.type) == 1 else None,
-            tags=args.tags if args.tags else None,
-            duration=args.duration[0] if args.duration and len(args.duration) == 1 else None
         )
 
-        # Additional filtering for multiple types or durations
+        # Additional filtering for multiple types
         if args.type and len(args.type) > 1:
             activities = [a for a in activities if a["type"] in args.type]
-
-        if args.duration and len(args.duration) > 1:
-            activities = [a for a in activities if a.get("duration") in args.duration]
 
         grouped_data = {}
         for activity in activities:
@@ -456,36 +390,6 @@ def main():
             console.print()
         else:
             console.print("No categories found.")
-
-    elif command == "tags":
-        tags_command = args.tags_command
-
-        if tags_command == "list" or tags_command is None:
-            tags = services.list_tags()
-            if tags:
-                console.print("\n[bold cyan]Available Tags:[/bold cyan]")
-                table = Table(show_header=True, box=None, header_style="cyan")
-                table.add_column("ID", justify="right", width=5)
-                table.add_column("Name")
-
-                for tag in tags:
-                    table.add_row(str(tag["id"]), f"#{tag['name']}")
-
-                console.print(table)
-                console.print()
-            else:
-                console.print("No tags found.")
-
-        elif tags_command == "create":
-            tag_id = services.create_tag(args.name)
-            console.print(f"✓ Created tag: #{args.name} (ID: {tag_id})")
-
-        elif tags_command == "delete":
-            try:
-                services.delete_tag(args.name)
-                console.print(f"✓ Deleted tag: #{args.name}")
-            except ValueError as e:
-                console.print(f"[red]✗ Error:[/red] {e}")
 
     elif command == "log":
         try:
@@ -579,18 +483,12 @@ def main():
         try:
             choice = services.get_random_activity(
                 types=[args.type] if args.type else None,
-                tags=[t.strip() for t in args.tags.split(",")] if args.tags else None,
-                duration=args.duration if args.duration else None,
             )
         except ValueError as e:
             # Build filter message
             filter_parts = []
             if args.type:
                 filter_parts.append(f"type '{args.type}'")
-            if args.duration:
-                filter_parts.append(f"duration '{args.duration}'")
-            if args.tags:
-                filter_parts.append(f"tags '{args.tags}'")
 
             filter_msg = " with " + ", ".join(filter_parts) if filter_parts else ""
             console.print(
@@ -619,8 +517,6 @@ def main():
         # Get activities from services layer with individual parameters
         activities = services.list_activities(
             type=args.type if args.type else None,
-            tags=[t.strip() for t in args.tags.split(",")] if args.tags else None,
-            duration=args.duration if args.duration else None,
             completable_only=False,
             completed_only=False,
             show_archived=args.show_archived

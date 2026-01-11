@@ -1,9 +1,9 @@
 """Database utilities for im_bored application."""
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-import os
 
 # Environment file location (in project root)
 ENV_FILE = Path(__file__).parent.parent / ".env"
@@ -93,11 +93,10 @@ def initialize_database(db_path: Path | None = None):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 type TEXT NOT NULL,
                 description TEXT NOT NULL,
-                completed INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                duration TEXT CHECK(duration IS NULL OR duration IN ('5min', '15min', '30min', '1h', '1h+')),
                 completable INTEGER NOT NULL DEFAULT 0,
+                completed INTEGER NOT NULL DEFAULT 0,
                 recurrence_days INTEGER CHECK(recurrence_days IS NULL OR recurrence_days > 0),
                 last_completed_at TIMESTAMP,
                 due_date TIMESTAMP,
@@ -113,9 +112,6 @@ def initialize_database(db_path: Path | None = None):
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_activities_completed ON activities(completed)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_activities_duration ON activities(duration)"
         )
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_activities_recurrence ON activities(recurrence_days)"
@@ -140,65 +136,6 @@ def initialize_database(db_path: Path | None = None):
                 UPDATE activities SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
             END
         """
-        )
-
-        # Create tags table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tags (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-        """
-        )
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name)")
-
-        # Create activity_tags junction table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS activity_tags (
-                activity_id INTEGER NOT NULL,
-                tag_id INTEGER NOT NULL,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (activity_id, tag_id),
-                FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
-                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
-            )
-        """
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_activity_tags_activity ON activity_tags(activity_id)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_activity_tags_tag ON activity_tags(tag_id)"
-        )
-
-        # Create decision_events table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS decision_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                activity_id INTEGER NOT NULL,
-                filter_tags TEXT,
-                outcome TEXT NOT NULL CHECK(outcome IN ('COMPLETED', 'SKIPPED', 'IGNORED')),
-                session_id TEXT,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE
-            )
-        """
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_decision_events_activity ON decision_events(activity_id)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_decision_events_outcome ON decision_events(outcome)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_decision_events_created ON decision_events(created_at)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_decision_events_session ON decision_events(session_id)"
         )
 
         conn.commit()
@@ -247,76 +184,6 @@ def get_random_uncompleted_activity(activity_types=None):
         return dict(activity) if activity else None
 
 
-def get_random_uncompleted_activity_filtered(
-    activity_types=None, tag_ids=None, duration=None
-):
-    """Get a random uncompleted activity with advanced filtering.
-
-    Args:
-        activity_types: Optional list of types to filter by
-        tag_ids: Optional list of tag IDs (activity must have ALL these tags)
-        duration: Optional duration filter ('5min', '15min', '30min', '1h', '1h+')
-
-    Returns:
-        dict: Activity data or None if no matching activities exist
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-
-        # Build the query - exclude archived activities
-        query = "SELECT * FROM activities WHERE completed = 0 AND archived = 0"
-        params = []
-
-        # Filter by type
-        if activity_types:
-            placeholders = ",".join("?" * len(activity_types))
-            query += f" AND type IN ({placeholders})"
-            params.extend(activity_types)
-
-        # Filter by duration
-        if duration:
-            query += " AND duration = ?"
-            params.append(duration)
-
-        # Filter by tags - activity must have ALL specified tags
-        if tag_ids:
-            query += """ AND id IN (
-                SELECT activity_id FROM activity_tags
-                WHERE tag_id IN ({})
-                GROUP BY activity_id
-                HAVING COUNT(DISTINCT tag_id) = ?
-            )""".format(
-                ",".join("?" * len(tag_ids))
-            )
-            params.extend(tag_ids)
-            params.append(len(tag_ids))
-
-        # Random selection
-        query += " ORDER BY RANDOM() LIMIT 1"
-
-        cursor.execute(query, params)
-        activity = cursor.fetchone()
-        return dict(activity) if activity else None
-
-
-def update_activity_duration(activity_id: int, duration: str | None):
-    """Update the duration of an activity.
-
-    Args:
-        activity_id: The ID of the activity
-        duration: Duration value ('5min', '15min', '30min', '1h', '1h+') or None
-
-    Returns:
-        bool: True if update was successful, False if activity not found
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE activities SET duration = ? WHERE id = ?", (duration, activity_id)
-        )
-        return cursor.rowcount > 0
-
-
 def get_all_activities():
     """Get all activities grouped by type.
 
@@ -350,26 +217,6 @@ def get_all_types():
         cursor.execute("SELECT DISTINCT type FROM activities ORDER BY type")
         types = [row["type"] for row in cursor.fetchall()]
     return types
-
-
-def add_activity(activity_type: str, description: str, completable: bool = False):
-    """Add a new activity to the database.
-
-    Args:
-        activity_type: The type/category of the activity
-        description: The activity description
-        completable: Whether this is a completable one-off activity (default: False)
-
-    Returns:
-        int: The ID of the newly created activity
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO activities (type, description, completed, completable) VALUES (?, ?, ?, ?)",
-            (activity_type, description, 0, 1 if completable else 0),
-        )
-        return cursor.lastrowid
 
 
 def update_activity_completion(activity_id: int, completed: bool):
@@ -468,179 +315,18 @@ def unarchive_activity(activity_id: int):
         return cursor.rowcount > 0
 
 
-# ============================================================================
-# Tag Management Functions
-# ============================================================================
-
-
-def get_all_tags():
-    """Get all tags from the database.
-
-    Returns:
-        list[dict]: List of all tags with id, name, created_at
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tags ORDER BY name")
-        return [dict(row) for row in cursor.fetchall()]
-
-
-def get_tag_by_name(name: str):
-    """Get a tag by its name.
-
-    Args:
-        name: The tag name to search for
-
-    Returns:
-        dict | None: Tag data or None if not found
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tags WHERE name = ?", (name,))
-        row = cursor.fetchone()
-        return dict(row) if row else None
-
-
-def create_tag(name: str):
-    """Create a new tag.
-
-    Args:
-        name: The tag name
-
-    Returns:
-        int: The ID of the created tag, or existing tag ID if already exists
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute("INSERT INTO tags (name) VALUES (?)", (name,))
-            return cursor.lastrowid
-        except sqlite3.IntegrityError:
-            # Tag already exists, return its ID
-            cursor.execute("SELECT id FROM tags WHERE name = ?", (name,))
-            return cursor.fetchone()[0]
-
-
-def delete_tag(tag_id: int):
-    """Delete a tag from the database.
-
-    Args:
-        tag_id: The ID of the tag to delete
-
-    Returns:
-        bool: True if deletion was successful, False if tag not found
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
-        return cursor.rowcount > 0
-
-
-def get_tags_for_activity(activity_id: int):
-    """Get all tags associated with an activity.
-
-    Args:
-        activity_id: The ID of the activity
-
-    Returns:
-        list[dict]: List of tags for this activity
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT t.* FROM tags t
-            JOIN activity_tags at ON t.id = at.tag_id
-            WHERE at.activity_id = ?
-            ORDER BY t.name
-        """,
-            (activity_id,),
-        )
-        return [dict(row) for row in cursor.fetchall()]
-
-
-def add_tag_to_activity(activity_id: int, tag_id: int):
-    """Associate a tag with an activity.
-
-    Args:
-        activity_id: The ID of the activity
-        tag_id: The ID of the tag
-
-    Returns:
-        bool: True if successful, False if already exists or error
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "INSERT INTO activity_tags (activity_id, tag_id) VALUES (?, ?)",
-                (activity_id, tag_id),
-            )
-            return True
-        except sqlite3.IntegrityError:
-            # Already exists
-            return False
-
-
-def remove_tag_from_activity(activity_id: int, tag_id: int):
-    """Remove a tag association from an activity.
-
-    Args:
-        activity_id: The ID of the activity
-        tag_id: The ID of the tag
-
-    Returns:
-        bool: True if deletion was successful, False if association not found
-    """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "DELETE FROM activity_tags WHERE activity_id = ? AND tag_id = ?",
-            (activity_id, tag_id),
-        )
-        return cursor.rowcount > 0
-
-
-def parse_tags_from_description(description: str):
-    """Parse hashtags from a description string.
-
-    Args:
-        description: The description text that may contain #hashtags
-
-    Returns:
-        tuple[str, list[str]]: (clean_description, list_of_tag_names)
-            Example: "Clean kitchen #indoor #15min" -> ("Clean kitchen", ["indoor", "15min"])
-    """
-    import re
-
-    # Find all hashtags (including hyphens)
-    tag_pattern = r"#([\w-]+)"
-    tags = re.findall(tag_pattern, description)
-
-    # Remove hashtags from description
-    clean_description = re.sub(tag_pattern, "", description).strip()
-    # Clean up multiple spaces
-    clean_description = re.sub(r"\s+", " ", clean_description)
-
-    return clean_description, tags
-
-
-def add_activity_with_tags(
+def add_activity(
     activity_type: str,
     description: str,
-    tag_names: list[str],
-    duration: str | None = None,
     completable: bool = False,
     recurrence_days: int | None = None,
     due_date: str | None = None,
 ):
-    """Add a new activity with tags in a single transaction.
+    """Add a new activity in a single transaction.
 
     Args:
         activity_type: The type/category of the activity
         description: The activity description
-        tag_names: List of tag names (will be created if they don't exist)
-        duration: Optional duration ('5min', '15min', '30min', '1h', '1h+')
         completable: Whether this is a completable one-off activity (default: False)
         recurrence_days: Optional recurrence period in days (requires completable=True)
         due_date: Optional due date for scheduled tasks (requires completable=True)
@@ -670,13 +356,12 @@ def add_activity_with_tags(
         # Insert activity
         cursor.execute(
             """INSERT INTO activities
-               (type, description, completed, duration, completable, recurrence_days, due_date, next_due_date)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (type, description, completed, completable, recurrence_days, due_date, next_due_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 activity_type,
                 description,
                 0,
-                duration,
                 1 if completable else 0,
                 recurrence_days,
                 due_date,
@@ -684,27 +369,6 @@ def add_activity_with_tags(
             ),
         )
         activity_id = cursor.lastrowid
-
-        # Create tags and associate them
-        for tag_name in tag_names:
-            # Create tag (or get existing) - do it within this connection
-            try:
-                cursor.execute("INSERT INTO tags (name) VALUES (?)", (tag_name,))
-                tag_id = cursor.lastrowid
-            except sqlite3.IntegrityError:
-                # Tag already exists, get its ID
-                cursor.execute("SELECT id FROM tags WHERE name = ?", (tag_name,))
-                tag_id = cursor.fetchone()[0]
-
-            # Associate with activity
-            try:
-                cursor.execute(
-                    "INSERT INTO activity_tags (activity_id, tag_id) VALUES (?, ?)",
-                    (activity_id, tag_id),
-                )
-            except sqlite3.IntegrityError:
-                # Already associated, skip
-                pass
 
         return activity_id
 
@@ -717,7 +381,6 @@ def add_activity_with_tags(
 def log_decision_event(
     activity_id: int,
     outcome: str,
-    filter_tags: list[int] | None = None,
     session_id: str | None = None,
 ):
     """Log a decision event.
@@ -725,26 +388,20 @@ def log_decision_event(
     Args:
         activity_id: The ID of the activity that was shown
         outcome: 'COMPLETED', 'SKIPPED', or 'IGNORED'
-        filter_tags: Optional list of tag IDs that were active filters
         session_id: Optional session ID for grouping decisions
 
     Returns:
         int: The ID of the created event
     """
-    import json
-
     with get_db_connection() as conn:
         cursor = conn.cursor()
 
-        # Convert filter_tags to JSON string
-        filter_tags_json = json.dumps(filter_tags) if filter_tags else None
-
         cursor.execute(
             """
-            INSERT INTO decision_events (activity_id, outcome, filter_tags, session_id)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO decision_events (activity_id, outcome, session_id)
+            VALUES (?, ?, ?)
         """,
-            (activity_id, outcome, filter_tags_json, session_id),
+            (activity_id, outcome, session_id),
         )
 
         return cursor.lastrowid
