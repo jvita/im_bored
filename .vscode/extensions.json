@@ -1,8 +1,7 @@
 {
-  "recommendations": [
-    "ms-python.python",
-    "ms-python.black-formatter",
-    "charliermarsh.ruff",
-    "ms-python.isort"
-  ]
+    "recommendations": [
+        "charliermarsh.ruff",
+        "ms-python.python",
+        "stkb.rewrap"
+    ]
 }

@@ -1,19 +1,14 @@
 {
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-  "[python]": {
-    "editor.defaultFormatter": "ms-python.black-formatter",
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit"
-    }
-  },
-  "python.analysis.typeCheckingMode": "basic",
-  "python.linting.enabled": true,
-  "python.linting.ruffEnabled": true,
-  "isort.args": ["--profile", "black"],
-  "black-formatter.args": [],
-  "ruff.args": [],
-  "editor.rulers": [88],
-  "files.trimTrailingWhitespace": true,
-  "files.insertFinalNewline": true
+        // "source.fixAll.ruff": "explicit",
+        "source.organizeImports.ruff": "explicit"
+    },
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    // Visual guides to help users see the 72 and 88 limits
+    "editor.rulers": [72, 88],
+    "editor.wordWrap": "on",
+    "editor.wordWrapColumn": 88,
+    // Ensure the Rewrap extension uses our lab standard
+    "rewrap.wrappingColumn": 72
 }

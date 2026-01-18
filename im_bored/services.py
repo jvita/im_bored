@@ -54,6 +54,7 @@ def add_activity(
 
 
 def list_activities(
+    num_to_get: int | None = None,
     type: str | None = None,
     completable_only: bool = False,
     completed_only: bool = False,
@@ -62,6 +63,7 @@ def list_activities(
     """Retrieve all activities with optional filtering by type, completion status, and archive status.
 
     Args:
+        num_to_get: The number of activities to get (max). Use None to get all.
         type: Filter to a single activity type (e.g., 'read', 'exercise'). Use None to show all types.
         completable_only: Set to True to only show todo items (completable activities). Set to False to show all activities.
         completed_only: Set to True to only show completed activities. Set to False to show incomplete or all activities.
@@ -111,6 +113,10 @@ def list_activities(
             query += " AND completed = 0"
 
         query += " ORDER BY created_at DESC"
+
+        if num_to_get is not None:
+            query += " LIMIT ?"
+            params.append(num_to_get)
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
