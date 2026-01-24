@@ -160,17 +160,20 @@ def get_activity_details(activity_id: int) -> dict:
     return activity
 
 
-def remove_activity(activity_id: int) -> None:
+def remove_activity(activity_id: int) -> bool:
     """Permanently delete an activity from the database.
 
     Args:
         activity_id: The activity ID to permanently delete.
+
+    Returns:
+        True if deletion was successful, False if activity not found
     """
     activity = db.get_activity_by_id(activity_id)
     if not activity:
         raise ValueError(f"Activity {activity_id} not found")
 
-    db.delete_activity(activity_id)
+    return db.delete_activity(activity_id)
 
 
 def archive_activity(activity_id: int) -> None:
@@ -216,7 +219,8 @@ def list_todos(
     """Get all incomplete todo items (completable activities that haven't been completed).
 
     Args:
-        type: Filter to a single activity type (e.g., 'read', 'exercise'). Use None to show all types.
+        type: Filter to a single activity type (). Use None to show all
+        types.
 
     Returns:
         List of incomplete todo item dictionaries.
@@ -255,26 +259,35 @@ def uncomplete_activity(activity_id: int) -> None:
     db.update_activity_completion(activity_id, completed=False)
 
 
-def log_activity_completion(activity_id: int) -> None:
+def log_activity_completion(activity_id: int) -> bool:
     """Log manual activity completion with analytics tracking for statistics.
 
     Args:
         activity_id: The activity ID to log completion for.
+
+    Returns:
+        True if activity completion was successfully logged.
     """
-    activity = db.get_activity_by_id(activity_id)
-    if not activity:
-        raise ValueError(f"Activity {activity_id} not found")
+    try:
+        activity = db.get_activity_by_id(activity_id)
+        if not activity:
+            raise ValueError(f"Activity {activity_id} not found")
 
-    # Log the decision event
-    db.log_decision_event(
-        activity_id=activity_id,
-        outcome="COMPLETED",
-        session_id=None,
-    )
+        # Log the decision event
+        db.log_decision_event(
+            activity_id=activity_id,
+            outcome="COMPLETED",
+            session_id=None,
+        )
 
-    # Mark as completed if it's a completable activity
-    if activity.get("completable"):
-        db.update_activity_completion(activity_id, completed=True)
+        # Mark as completed if it's a completable activity
+        if activity.get("completable"):
+            db.update_activity_completion(activity_id, completed=True)
+
+        return True
+    except Exception:
+        # Something went wrong
+        return False
 
 
 # ============================================================================
